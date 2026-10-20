@@ -55,6 +55,11 @@ def window_menu(move_screen=True):
     items = [
         _item("Minimize", actions.minimize_window, "⌘M"),
         _item("Zoom", actions.zoom_window),
+        SEPARATOR,
+        _item("Tile Window to Left of Screen",
+              lambda: actions.tile_window("left"), "⌃⌘←"),
+        _item("Tile Window to Right of Screen",
+              lambda: actions.tile_window("right"), "⌃⌘→"),
     ]
     if move_screen:
         items += [

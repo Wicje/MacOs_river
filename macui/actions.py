@@ -129,6 +129,30 @@ def move_to_output(direction):
              f"{direction}")
 
 
+def tile_window(direction):
+    """Tile the focused window to the left or right half of the screen.
+
+    River Classic can snap a floating view to a screen edge and resize it,
+    which together make a macOS style half screen tile.
+    """
+    if is_sway():
+        _run(f"swaymsg move position 0 0")
+        return
+    width = 1366
+    try:
+        out = subprocess.run(["wlr-randr"], capture_output=True, text=True,
+                             timeout=3).stdout
+        for line in out.splitlines():
+            if "current)" in line:
+                width = int(line.strip().split()[0].split("x")[0])
+                break
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        pass
+    half = width // 2
+    _run(f"riverctl snap {direction}")
+    _run(f"riverctl resize horizontal -{half}")
+
+
 def zoom_window():
     """macOS' Zoom: maximise the focused window inside its container."""
     if is_sway():

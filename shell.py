@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import signal
+import subprocess
 import sys
 import time
 
@@ -32,6 +33,8 @@ from .panels.launchpad import Launchpad  # noqa: E402
 from .panels.missioncontrol import MissionControl  # noqa: E402
 from .panels.notificationcenter import NotificationCentre  # noqa: E402
 from .panels.spaces import Spaces  # noqa: E402
+from .panels.popup import StatusPopup  # noqa: E402
+from .panels.settings import Settings  # noqa: E402
 from .panels.dock import Dock  # noqa: E402
 from .panels.dropdown import Dropdown  # noqa: E402
 from .panels.menubar import MenuBar  # noqa: E402
@@ -84,6 +87,10 @@ class Shell:
         self.mission_control = MissionControl(self.metrics, self)
         self.notification_centre = NotificationCentre(self.metrics, self)
         self.spaces = Spaces(self.metrics, self)
+        self.settings = Settings(self.metrics, self)
+        self.popups = {}
+        for kind in ("wifi", "bluetooth", "battery", "volume"):
+            self.popups[kind] = StatusPopup(self.metrics, self, kind)
         self._tag = 1
         self._last_command = ""
         self._last_command_time = 0.0
@@ -93,8 +100,8 @@ class Shell:
             self.menubar, self.notch, self.dock, self.widgets,
             self.control_centre, self.dropdown, self.spotlight,
             self.launchpad, self.mission_control, self.notification_centre,
-            self.spaces, self.about, self.force_quit,
-        ]
+            self.spaces, self.settings, self.about, self.force_quit,
+        ] + list(self.popups.values())
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -108,6 +115,9 @@ class Shell:
         self.launchpad.hide()
         self.mission_control.hide()
         self.notification_centre.hide()
+        self.settings.hide()
+        for popup in self.popups.values():
+            popup.hide()
         self.about.hide()
         self.force_quit.hide()
         self.widgets.set_visible(self.metrics.config.get("show_widgets", True))
@@ -196,6 +206,13 @@ class Shell:
             self.mission_control.toggle()
         elif command == "notifications":
             self.notification_centre.toggle()
+        elif command == "settings":
+            self.open_settings()
+        elif command.startswith("settings:"):
+            self.settings.section = command.split(":", 1)[1]
+            self.open_settings()
+        elif command.startswith("popup:"):
+            self.open_popup(command.split(":", 1)[1])
         elif command == "close":
             actions.close_window()
         elif command == "lock":
@@ -238,6 +255,8 @@ class Shell:
             self.about.open()
         elif action == "control_centre":
             self.control_centre.show_all()
+        elif action == "settings":
+            self.open_settings()
         elif action == "force_quit":
             self.force_quit.open()
         elif action == "toggle_dock":
@@ -264,6 +283,91 @@ class Shell:
 
     def toggle_notification_centre(self):
         self.notification_centre.toggle()
+
+    def open_settings(self):
+        self.settings.open()
+
+    def open_popup(self, kind, anchor_x=None):
+        for popup in self.popups.values():
+            popup.close()
+        self.popups[kind].toggle(anchor_x)
+
+    # -- the dock's context menu --------------------------------------------
+
+    def open_dock_menu(self, app, index):
+        """The menu macOS shows when the dock icon is clicked with the right
+        button."""
+        from .panels import dock as dock_module
+
+        rows = []
+        in_dock = any(item["id"] == app["id"] for item in dock_module.APPS)
+        if in_dock:
+            rows.append({
+                "glyph": "grid", "label": "Remove from Dock", "detail": "",
+                "active": False,
+                "action": lambda: self.remove_from_dock(app["id"]),
+            })
+        else:
+            rows.append({
+                "glyph": "grid", "label": "Keep in Dock", "detail": "",
+                "active": False,
+                "action": lambda: self.keep_in_dock(app),
+            })
+        rows.append({
+            "glyph": "close", "label": "Quit", "detail": "", "active": False,
+            "action": lambda: self.quit_app(app.get("app") or ""),
+        })
+        rows.append({
+            "glyph": "chevron_down", "label": "Options…", "detail": "",
+            "active": False, "action": self.open_settings,
+        })
+
+        menu = self.popups.get("dock")
+        if menu is None:
+            menu = self.popups["wifi"]
+        menu.show_items(app.get("label", "Application"), rows,
+                        anchor_x=None,
+                        anchor_y=int(self.metrics.height * 0.72))
+
+    def remove_from_dock(self, app_id):
+        from .panels import dock as dock_module
+
+        dock_module.APPS = [app for app in dock_module.APPS
+                            if app["id"] != app_id]
+        dock_module._save_apps(dock_module.APPS)
+        self.dock.reload_apps()
+
+    def keep_in_dock(self, app):
+        from .panels import dock as dock_module
+
+        if any(item["id"] == app["id"] for item in dock_module.APPS):
+            return
+        dock_module.APPS.append(app)
+        dock_module._save_apps(dock_module.APPS)
+        self.dock.reload_apps()
+
+    def quit_app(self, app_id):
+        if not app_id:
+            return
+        for entry in state.window_list():
+            if (entry[0] or "").lower() == app_id.lower():
+                actions.activate_window(entry[1])
+                actions.kill_window(entry[1])
+
+    # -- syncing the config with the panels ---------------------------------
+
+    def sync_dock(self):
+        self.dock.set_visible(self.metrics.config.get("show_dock", True))
+
+    def sync_notch(self):
+        self.notch.set_visible(self.metrics.config.get("show_notch", True))
+
+    def sync_widgets(self):
+        self.widgets.set_visible(self.metrics.config.get("show_widgets", True))
+
+    def restart_wallpaper(self):
+        subprocess.run(["systemctl", "--user", "restart",
+                        "macshell-wallpaper.service"], capture_output=True)
 
     # -- helpers for the panels ---------------------------------------------
 

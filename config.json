@@ -5,5 +5,10 @@
     "squareness": 5.0,
     "show_widgets": true,
     "show_dock": true,
-    "show_notch": true
+    "show_notch": true,
+    "accent": "blue",
+    "reduce_transparency": false,
+    "wallpaper_rotate": true,
+    "mute": true,
+    "dnd": true
 }

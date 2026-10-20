@@ -12,6 +12,7 @@ Modes:
   * live aurora        -> when the gallery is empty
 """
 
+import json
 import math
 import os
 import subprocess
@@ -29,6 +30,7 @@ gi.require_version("GtkLayerShell", "0.1")
 from gi.repository import GLib, Gdk, GdkPixbuf, Gtk, GtkLayerShell  # noqa: E402
 
 STATE = os.path.expanduser("~/.config/river/.wallpaper")
+SHELL_CONFIG = os.path.expanduser("~/.config/macshell/config.json")
 DEFAULT_IMAGE = os.path.expanduser("~/Pictures/wall/tahoe-purple.png")
 GALLERY_DIRS = ("~/mac", "~/Pictures/wall")
 
@@ -147,6 +149,14 @@ class Gallery:
         except OSError:
             pass
 
+    def rotation_enabled(self):
+        """Whether the shell wants the wallpaper to rotate."""
+        try:
+            with open(SHELL_CONFIG) as fh:
+                return bool(json.load(fh).get("wallpaper_rotate", True))
+        except (OSError, ValueError):
+            return True
+
     def follow_state(self):
         """Honour a wallpaper that was picked by hand."""
         now = time.monotonic()
@@ -194,7 +204,10 @@ class Gallery:
                 self.next_switch = now + ROTATE_SECONDS
             dirty = True
         elif now >= self.next_switch:
-            self.start_fade()
+            if self.rotation_enabled():
+                self.start_fade()
+            else:
+                self.next_switch = now + ROTATE_SECONDS
 
         return dirty
 

@@ -131,12 +131,15 @@ class MenuBar(Panel):
             bw = 22 * s
             glyphs.battery(cr, right - bw, (bar - bh) / 2, bh,
                            pal["text"], self._battery / 100.0, self._charging)
+            self._battery_x = right - bw
+            self._battery_w = bw
             right -= bw + m.px("status_gap")
 
         wifi_on = state.wifi_enabled()
         wifi_color = pal["text"] if wifi_on else pal["text_faint"]
         glyphs.wifi(cr, right - glyph, (bar - glyph) / 2, glyph, wifi_color,
                     level=3)
+        self._wifi_x = right - glyph
         right -= glyph + m.px("status_gap")
 
         glyphs.control_center(cr, right - glyph, (bar - glyph) / 2, glyph, pal["text"])
@@ -153,6 +156,14 @@ class MenuBar(Panel):
         if hasattr(self, "_clock_x") and \
                 self._clock_x <= x <= self._clock_x + self._clock_w:
             self.shell.toggle_notification_centre()
+            return True
+        if hasattr(self, "_battery_x") and \
+                self._battery_x <= x <= self._battery_x + self._battery_w:
+            self.shell.open_popup("battery", x)
+            return True
+        if hasattr(self, "_wifi_x") and \
+                self._wifi_x <= x <= self._wifi_x + m.px("status_glyph"):
+            self.shell.open_popup("wifi", x)
             return True
         if hasattr(self, "_cc_x") and self._cc_x <= x <= self._cc_x + m.px("status_glyph"):
             self.shell.toggle_control_center()

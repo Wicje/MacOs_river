@@ -7,7 +7,9 @@ small indicator dot and the hovered app shows a label bubble.
 
 from __future__ import annotations
 
+import json
 import math
+import os
 import time
 
 import gi
@@ -19,7 +21,7 @@ from gi.repository import GLib, Gtk  # noqa: E402
 from ..macui import draw, glyphs, state  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
-APPS = [
+DEFAULT_APPS = [
     {"id": "launchpad", "label": "Launchpad", "cmd": "", "special": "launchpad",
      "glyph": "grid", "app": ""},
     {"id": "firefox", "label": "Firefox", "cmd": "firefox", "app": "firefox"},
@@ -35,6 +37,38 @@ APPS = [
     {"id": "spotify", "label": "Spotify", "cmd": "spotify", "app": "spotify"},
     {"id": "steam", "label": "Steam", "cmd": "steam", "app": "steam"},
 ]
+
+DOCK_CONFIG = os.path.expanduser("~/.config/macshell/dock.json")
+
+
+def _load_apps():
+    """The dock's items, with the user's changes applied."""
+    try:
+        with open(DOCK_CONFIG) as fh:
+            saved = json.load(fh)
+    except (OSError, ValueError):
+        return list(DEFAULT_APPS)
+    if not isinstance(saved, list):
+        return list(DEFAULT_APPS)
+    apps = []
+    for entry in saved:
+        for known in DEFAULT_APPS:
+            if known["id"] == entry:
+                apps.append(dict(known))
+                break
+    return apps
+
+
+def _save_apps(apps):
+    try:
+        os.makedirs(os.path.dirname(DOCK_CONFIG), exist_ok=True)
+        with open(DOCK_CONFIG, "w") as fh:
+            json.dump([app["id"] for app in apps], fh, indent=4)
+    except OSError:
+        pass
+
+
+APPS = _load_apps()
 
 TRASH = {"id": "trash", "label": "Trash", "cmd": "dolphin trash:///"}
 
@@ -78,6 +112,16 @@ class Dock(Panel):
 
     def refresh_running(self):
         self._running = self._detect_running()
+        self.redraw()
+
+    def reload_apps(self):
+        """Pick up a changed list of dock items."""
+        global APPS
+        APPS = _load_apps()
+        count = len(APPS) + 1
+        self._sizes = [self.metrics.px("dock_icon")] * count
+        self._targets = list(self._sizes)
+        self.set_content_size(self.panel_width(), self.panel_height())
         self.redraw()
 
     # -- geometry ------------------------------------------------------------
@@ -354,6 +398,9 @@ class Dock(Panel):
             if item["x"] <= x <= item["x"] + item["size"]:
                 index = item["index"]
                 app = APPS[index] if index < len(APPS) else TRASH
+                if button == 3:
+                    self.shell.open_dock_menu(app, index)
+                    return True
                 self._activate(app, index)
                 return True
         return False

@@ -92,8 +92,8 @@ class Notch(Panel):
         draw.rounded_path(cr, 0, 0, width, height, radius)
         cr.clip()
         grad = cairo.LinearGradient(0, 0, 0, height)
-        grad.add_color_stop_rgba(0.0, 0.03, 0.03, 0.04, 0.97)
-        grad.add_color_stop_rgba(1.0, 0.06, 0.06, 0.08, 0.92)
+        grad.add_color_stop_rgba(0.0, 0.03, 0.03, 0.04, 1.0)
+        grad.add_color_stop_rgba(1.0, 0.06, 0.06, 0.08, 0.98)
         cr.set_source(grad)
         cr.rectangle(0, 0, width, height)
         cr.fill()
@@ -103,8 +103,11 @@ class Notch(Panel):
         pad = m.px("notch_pad")
         art = m.px("notch_art")
 
-        # -- left: the media widget -------------------------------------
+        # -- left: the media widget, or the calendar when nothing plays
         x = pad
+        if not self._media:
+            self._paint_calendar(cr, x, 10 * m.scale, 118 * m.scale,
+                                 height - 20 * m.scale, pal)
         if self._media:
             title, artist, status, position, length, _ = self._media
             if self._art is not None:
@@ -143,15 +146,9 @@ class Notch(Panel):
                                       (height - 22 * m.scale) / 2,
                                       22 * m.scale))
                 bx += 24 * m.scale
-        else:
-            glyphs.speaker(cr, x, (height - 16 * m.scale) / 2, 16 * m.scale,
-                           pal["text_faint"])
-            draw.draw_text(cr, x + 24 * m.scale, height / 2, "Now Playing",
-                           m.font("notch_font_size"), pal["text_faint"],
-                           baseline="middle")
 
         # -- middle: a round shortcut ------------------------------------
-        mid_x = width * 0.60
+        mid_x = width * 0.62
         button = 34 * m.scale
         cr.save()
         cr.set_source_rgba(*pal["fill_hover"])
@@ -177,10 +174,25 @@ class Notch(Panel):
                        align="right", baseline="middle")
 
         # separators
-        for sep_x in (width * 0.52, width * 0.68):
+        for sep_x in (width * 0.50, width * 0.72):
             cr.set_source_rgba(*pal["separator"])
             cr.rectangle(sep_x, height * 0.22, 1, height * 0.56)
             cr.fill()
+
+    def _paint_calendar(self, cr, x, y, w, h, pal):
+        """The little calendar the notch shows when nothing is playing."""
+        import datetime
+
+        m = self.metrics
+        today = datetime.date.today()
+        draw.draw_text(cr, x, y + h * 0.18, today.strftime("%a").upper(),
+                       h * 0.20, pal["text_faint"], weight="bold",
+                       baseline="middle")
+        draw.draw_text(cr, x, y + h * 0.56, str(today.day),
+                       h * 0.52, pal["text"], weight="bold",
+                       baseline="middle")
+        draw.draw_text(cr, x, y + h * 0.86, today.strftime("%B %Y"),
+                       h * 0.19, pal["text_faint"], baseline="middle")
 
     def _paint_button(self, cr, x, y, size, shape, pal):
         color = pal["text_dim"]

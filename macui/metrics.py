@@ -127,6 +127,17 @@ PALETTE = {
     },
 }
 
+ACCENTS = {
+    "blue": (0.039, 0.518, 1.0),
+    "purple": (0.62, 0.32, 0.94),
+    "pink": (0.98, 0.36, 0.62),
+    "red": (1.0, 0.23, 0.19),
+    "orange": (1.0, 0.58, 0.16),
+    "yellow": (1.0, 0.80, 0.10),
+    "green": (0.30, 0.80, 0.35),
+    "graphite": (0.55, 0.55, 0.58),
+}
+
 DEFAULTS = {
     "scale_mode": "auto",      # auto | output | manual
     "scale": 1.0,              # used when scale_mode == manual
@@ -135,6 +146,9 @@ DEFAULTS = {
     "show_widgets": True,
     "show_dock": True,
     "show_notch": True,
+    "accent": "blue",
+    "reduce_transparency": False,
+    "wallpaper_rotate": True,
 }
 
 
@@ -266,7 +280,16 @@ class Metrics:
         return float(self.config.get("squareness", 5.0))
 
     def palette(self, theme=None):
-        return PALETTE[theme or self.config.get("theme", "dark")]
+        palette = dict(PALETTE[theme or self.config.get("theme", "dark")])
+        accent = ACCENTS.get(self.config.get("accent", "blue"))
+        if accent:
+            palette["accent"] = (*accent, 1.0)
+            palette["accent_dim"] = (*accent, palette["accent_dim"][3])
+        if self.config.get("reduce_transparency"):
+            palette["glass_top"] = (1.0, 1.0, 1.0, 0.72)
+            palette["glass_bottom"] = (1.0, 1.0, 1.0, 0.62)
+            palette["menu_bar"] = (0.055, 0.055, 0.075, 0.85)
+        return palette
 
     def save(self):
         os.makedirs(CONFIG_DIR, exist_ok=True)
