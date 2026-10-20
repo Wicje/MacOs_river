@@ -1,15 +1,17 @@
 {
     "scale_mode": "auto",
     "scale": 1.0,
-    "theme": "dark",
+    "theme": "light",
     "squareness": 5.0,
     "show_widgets": true,
     "show_dock": true,
     "show_notch": true,
-    "accent": "yellow",
+    "accent": "graphite",
     "reduce_transparency": false,
     "wallpaper_rotate": true,
     "show_desktop_icons": false,
+    "dock_mode": "auto",
+    "notch_mode": "auto",
     "mute": true,
     "dnd": true
 }

@@ -378,10 +378,45 @@ class Dock(Panel):
                 return True
         return False
 
+    # -- visibility ----------------------------------------------------------
+
+    def set_shown(self, shown):
+        """Slide the dock in or out of the screen.
+
+        macOS slides the dock down when it hides and pushes it up when the
+        pointer reaches the bottom edge; the surface stays alive so the
+        animation is possible.
+        """
+        if shown:
+            self.show_all()
+            self.slide("bottom", 0)
+            self.redraw()
+            return
+        self.slide("bottom", -self.panel_height(),
+                   done=lambda: self.hide())
+
     # -- input ---------------------------------------------------------------
+
+    def input_rects(self):
+        """Only the shelf takes the pointer.
+
+        The surface is taller than the shelf because the icons grow out of
+        it, and those transparent pixels would otherwise swallow the
+        clicks of the windows underneath the dock.
+        """
+        if not self._layout:
+            self._compute_layout()
+        shelf_x, shelf_y, shelf_w, shelf_h = self._shelf
+        if shelf_w <= 0:
+            return None
+        m = self.metrics
+        icon_bottom = shelf_y + shelf_h - m.px("dock_pad_y")
+        top = icon_bottom - m.px("dock_icon_max")
+        return [(shelf_x, top, shelf_w, icon_bottom - top)]
 
     def on_motion(self, x, y):
         self._update_targets()
+        self.shell.keep_alive("dock")
         for item in self._layout:
             if item["x"] <= x <= item["x"] + item["size"]:
                 if self.hover != item["index"]:

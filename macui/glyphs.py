@@ -399,3 +399,46 @@ def display_brightness(cr, x, y, size, color):
     cr.arc(x + 8 * s, y + 5 * s, 2.4 * s, 0, 2 * math.pi)
     cr.fill()
     cr.restore()
+
+
+def sparkles(cr, x, y, size, color):
+    """The sparkle of the Writing Tools."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+
+    def star(cx, cy, r):
+        cr.move_to(cx, cy - r)
+        cr.curve_to(cx + r * 0.16, cy - r * 0.16, cx + r * 0.16, cy - r * 0.16,
+                    cx + r, cy)
+        cr.curve_to(cx + r * 0.16, cy + r * 0.16, cx + r * 0.16, cy + r * 0.16,
+                    cx, cy + r)
+        cr.curve_to(cx - r * 0.16, cy + r * 0.16, cx - r * 0.16, cy + r * 0.16,
+                    cx - r, cy)
+        cr.curve_to(cx - r * 0.16, cy - r * 0.16, cx - r * 0.16, cy - r * 0.16,
+                    cx, cy - r)
+        cr.close_path()
+
+    star(x + 5.6 * s, y + 5.6 * s, 4.6 * s)
+    cr.fill()
+    star(x + 12.0 * s, y + 11.4 * s, 2.4 * s)
+    cr.fill()
+    cr.restore()
+
+
+def wand(cr, x, y, size, color):
+    """The magic wand of the assistant."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.6 * s)
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    cr.move_to(x + 3.4 * s, y + 12.6 * s)
+    cr.line_to(x + 10.4 * s, y + 5.6 * s)
+    cr.stroke()
+    cr.move_to(x + 4.6 * s, y + 5.0 * s)
+    cr.line_to(x + 7.4 * s, y + 5.0 * s)
+    cr.move_to(x + 6.0 * s, y + 3.6 * s)
+    cr.line_to(x + 6.0 * s, y + 6.4 * s)
+    cr.stroke()
+    cr.restore()

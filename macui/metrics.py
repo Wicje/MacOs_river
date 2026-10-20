@@ -92,10 +92,12 @@ BASE = {
 
 PALETTE = {
     "dark": {
-        "glass_top": [1.0, 1.0, 1.0, 0.24],
-        "glass_bottom": [1.0, 1.0, 1.0, 0.13],
-        "glass_edge_top": [1.0, 1.0, 1.0, 0.40],
-        "glass_edge_bottom": [1.0, 1.0, 1.0, 0.10],
+        # the dark glass of macOS: the panels stay readable whatever the
+        # wallpaper does, white text on a dark body
+        "glass_top": [0.09, 0.09, 0.11, 0.62],
+        "glass_bottom": [0.05, 0.05, 0.07, 0.52],
+        "glass_edge_top": [1.0, 1.0, 1.0, 0.20],
+        "glass_edge_bottom": [1.0, 1.0, 1.0, 0.05],
         "shadow": [0.0, 0.0, 0.0, 0.30],
         "text": [1.0, 1.0, 1.0, 1.0],
         "text_dim": [1.0, 1.0, 1.0, 0.62],
@@ -105,7 +107,8 @@ PALETTE = {
         "fill": [1.0, 1.0, 1.0, 0.10],
         "fill_hover": [1.0, 1.0, 1.0, 0.18],
         "separator": [1.0, 1.0, 1.0, 0.10],
-        "menu_bar": [0.055, 0.055, 0.075, 0.32],
+        "menu_bar": [0.055, 0.055, 0.075, 0.62],
+        "switch_off": [0.55, 0.55, 0.60, 0.45],
         "on_accent": [1.0, 1.0, 1.0, 1.0],
     },
     "light": {
@@ -123,6 +126,7 @@ PALETTE = {
         "fill_hover": [0.0, 0.0, 0.0, 0.12],
         "separator": [0.0, 0.0, 0.0, 0.10],
         "menu_bar": [1.0, 1.0, 1.0, 0.34],
+        "switch_off": [0.35, 0.35, 0.38, 0.35],
         "on_accent": [1.0, 1.0, 1.0, 1.0],
     },
 }
@@ -150,6 +154,15 @@ DEFAULTS = {
     "reduce_transparency": False,
     "wallpaper_rotate": True,
     "show_desktop_icons": True,
+    # always | desktop | auto: the dock stays on the desktop, steps aside
+    # for an application and comes back at the edge of the screen
+    "dock_mode": "desktop",
+    # always | auto: the notch waits for the pointer at the top edge
+    "notch_mode": "auto",
+    # the Liquid Glass controls: how opaque the panels are (0.5 … 1.5) and
+    # how much accent colour they carry (0 … 1)
+    "glass_opacity": 1.0,
+    "glass_tint": 0.0,
 }
 
 
@@ -286,10 +299,23 @@ class Metrics:
         if accent:
             palette["accent"] = (*accent, 1.0)
             palette["accent_dim"] = (*accent, palette["accent_dim"][3])
+        # the Liquid Glass controls of macOS: how opaque the panels are and
+        # how much of the accent colour they carry
+        opacity = float(self.config.get("glass_opacity", 1.0))
+        tint = float(self.config.get("glass_tint", 0.0))
+        if opacity != 1.0 or tint:
+            for key in ("glass_top", "glass_bottom"):
+                r, g, b, a = palette[key]
+                a = max(0.0, min(1.0, a * opacity))
+                if tint and accent:
+                    r += (accent[0] - r) * tint
+                    g += (accent[1] - g) * tint
+                    b += (accent[2] - b) * tint
+                palette[key] = (r, g, b, a)
         if self.config.get("reduce_transparency"):
-            palette["glass_top"] = (1.0, 1.0, 1.0, 0.72)
-            palette["glass_bottom"] = (1.0, 1.0, 1.0, 0.62)
-            palette["menu_bar"] = (0.055, 0.055, 0.075, 0.85)
+            palette["glass_top"] = (0.09, 0.09, 0.11, 0.95)
+            palette["glass_bottom"] = (0.06, 0.06, 0.08, 0.92)
+            palette["menu_bar"] = (0.055, 0.055, 0.075, 0.95)
         return palette
 
     def save(self):

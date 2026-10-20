@@ -18,7 +18,7 @@ set term foot
 # =============================================================================
 for i in $(seq 1 9); do
     tags=$((1 << (i - 1)))
-    riverctl map normal Super "$i" set-focused-tags $tags
+    riverctl map normal Super "$i" spawn "$HOME/.config/river/macshell-cmd.sh tag $i"
     riverctl map normal Super+Shift "$i" set-view-tags $tags
 done
 
@@ -31,7 +31,8 @@ riverctl map normal Super Return spawn foot
 riverctl map normal Mod4 B spawn firefox
 riverctl map normal Mod4 E spawn dolphin
 riverctl map normal Super D spawn "$HOME/.config/river/macshell-cmd.sh launchpad"
-riverctl map normal Super Tab spawn "$HOME/.config/river/macshell-cmd.sh windows"
+riverctl map normal Super Tab spawn "$HOME/.config/river/macshell-cmd.sh switcher"
+riverctl map normal Control Up spawn "$HOME/.config/river/macshell-cmd.sh windows"
 
 # macOS shell: control centre, spotlight and the Apple menu
 riverctl map normal Super C spawn "$HOME/.config/river/macshell-cmd.sh cc"
@@ -40,6 +41,11 @@ riverctl map normal Super+Shift A spawn "$HOME/.config/river/macshell-cmd.sh app
 riverctl map normal Super+Shift T spawn "$HOME/.config/river/macshell-cmd.sh dock"
 riverctl map normal Super+Shift Q spawn "$HOME/.config/river/macshell-cmd.sh notch"
 riverctl map normal Super+Shift G spawn "$HOME/.config/river/macshell-cmd.sh widgets"
+
+# Stage Manager, the assistant and the screenshot toolbar
+riverctl map normal Super G spawn "$HOME/.config/river/macshell-cmd.sh stage"
+riverctl map normal Super+Shift K spawn "$HOME/.config/river/macshell-cmd.sh ask"
+riverctl map normal Alt S spawn "$HOME/.config/river/macshell-cmd.sh screenshot:hud"
 
 # Clipboard
 wl-paste --type text --watch cliphist store &
@@ -71,7 +77,6 @@ riverctl map normal Mod4+Control J resize vertical 50
 riverctl map normal Mod4+Control K resize vertical -50
 
 # Screenshot (glass preview with Copy/Save/Open)
-riverctl map normal Alt S spawn "$HOME/.config/river/screenshot.sh region"
 riverctl map normal Print spawn "$HOME/.config/river/screenshot.sh full"
 
 # SCREEN RECORDING (Prompt for name)

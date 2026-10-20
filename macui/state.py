@@ -23,6 +23,7 @@ _cache = {
     "app_id": "",
     "window": "",
     "running": set(),
+    "toplevels": [],
 }
 _cache_lock = threading.Lock()
 
@@ -279,6 +280,12 @@ def focused_window():
         return _cache["window"]
 
 
+def toplevels():
+    """The compositor's toplevels, as the background thread saw them."""
+    with _cache_lock:
+        return list(_cache["toplevels"])
+
+
 def running_app_ids():
     """App identifiers of every window that is currently mapped."""
     with _cache_lock:
@@ -399,6 +406,7 @@ def _refresh_once():
         _cache["app_id"] = app_id
         _cache["window"] = title
         _cache["running"] = running
+        _cache["toplevels"] = entries
 
 
 def _refresh_loop():

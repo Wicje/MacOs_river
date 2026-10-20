@@ -27,6 +27,7 @@ from gi.repository import GLib, Gtk  # noqa: E402
 from .macui import actions, state  # noqa: E402
 from .macui.metrics import Metrics  # noqa: E402
 from .panels.about import About  # noqa: E402
+from .panels.assistant import Assistant  # noqa: E402
 from .panels.controlcenter import ControlCentre  # noqa: E402
 from .panels.forcequit import ForceQuit  # noqa: E402
 from .panels.launchpad import Launchpad  # noqa: E402
@@ -40,6 +41,11 @@ from .panels.dropdown import Dropdown  # noqa: E402
 from .panels.menubar import MenuBar  # noqa: E402
 from .panels.notch import Notch  # noqa: E402
 from .panels.desktopicons import DesktopIcons  # noqa: E402
+from .panels.sensor import Sensor  # noqa: E402
+from .panels.quicklook import QuickLook  # noqa: E402
+from .panels.screenshothud import ScreenshotHUD  # noqa: E402
+from .panels.stagemanager import StageManager  # noqa: E402
+from .panels.switcher import Switcher  # noqa: E402
 from .panels.spotlight import Spotlight  # noqa: E402
 from .panels.widgets import Widgets  # noqa: E402
 
@@ -84,6 +90,20 @@ class Shell:
         self.control_centre = ControlCentre(self.metrics, self)
         self.widgets = Widgets(self.metrics, self)
         self.desktop_icons = DesktopIcons(self.metrics, self)
+        self.switcher = Switcher(self.metrics, self)
+        self.quicklook = QuickLook(self.metrics, self)
+        self.stage_manager = StageManager(self.metrics, self)
+        self.screenshot_hud = ScreenshotHUD(self.metrics, self)
+        self.assistant = Assistant(self.metrics, self)
+        # the bottom edge of the screen is the hot zone of the dock; the
+        # sensor has to be mapped before the dock so the dock stays on top
+        self.sensors = [Sensor(self.metrics, self, "bottom")]
+        self._notch_until = 0.0
+        self._dock_until = 0.0
+        self._dock_shown = None
+        self._notch_shown = None
+        self._focus_key = None
+        self._focus_tag = 1
         self.spotlight = Spotlight(self.metrics, self)
         self.launchpad = Launchpad(self.metrics, self)
         self.mission_control = MissionControl(self.metrics, self)
@@ -99,8 +119,10 @@ class Shell:
         self.about = About(self.metrics, self)
         self.force_quit = ForceQuit(self.metrics, self)
         self.windows = [
+            *self.sensors,
             self.menubar, self.notch, self.dock, self.widgets,
-            self.desktop_icons,
+            self.desktop_icons, self.switcher, self.quicklook,
+            self.stage_manager, self.screenshot_hud, self.assistant,
             self.control_centre, self.dropdown, self.spotlight,
             self.launchpad, self.mission_control, self.notification_centre,
             self.spaces, self.settings, self.about, self.force_quit,
@@ -119,6 +141,11 @@ class Shell:
         self.mission_control.hide()
         self.notification_centre.hide()
         self.settings.hide()
+        self.switcher.hide()
+        self.quicklook.hide()
+        self.stage_manager.hide()
+        self.screenshot_hud.hide()
+        self.assistant.hide()
         for popup in self.popups.values():
             popup.hide()
         self.about.hide()
@@ -126,8 +153,9 @@ class Shell:
         self.widgets.set_visible(self.metrics.config.get("show_widgets", True))
         self.desktop_icons.set_visible(
             self.metrics.config.get("show_desktop_icons", True))
-        self.dock.set_visible(self.metrics.config.get("show_dock", True))
-        self.notch.set_visible(self.metrics.config.get("show_notch", True))
+        # the dock and the notch decide for themselves whether they belong
+        # on the screen: the desktop shows the dock, an application hides it
+        self._sync_panels()
 
         # MACSHELL_SHOW_CC=1 opens the control centre straight away, which
         # makes it possible to check its layout without a mouse
@@ -137,6 +165,7 @@ class Shell:
             self.spotlight.open()
 
         GLib.timeout_add(1000, self._tick)
+        GLib.timeout_add(120, self._tick_panels)
         GLib.timeout_add(2000, self._refresh_state)
         self._listen_for_commands()
         signal.signal(signal.SIGTERM, lambda *_: Gtk.main_quit())
@@ -211,6 +240,22 @@ class Shell:
             self.launchpad.toggle()
         elif command == "widgets":
             self.toggle_widgets()
+        elif command == "switcher":
+            self.switcher.toggle()
+        elif command == "stage":
+            self.stage_manager.toggle()
+        elif command == "ask":
+            self.assistant.open("ask")
+        elif command == "write":
+            self.assistant.open("write")
+        elif command == "screen":
+            self.assistant.open("screen")
+        elif command == "screenshot:hud":
+            self.screenshot_hud.toggle()
+        elif command.startswith("quicklook:"):
+            self.quicklook.show_file(command.split(":", 1)[1], "look")
+        elif command.startswith("getinfo:"):
+            self.quicklook.show_file(command.split(":", 1)[1], "info")
         elif command == "desktopicons":
             self.toggle_desktop_icons()
         elif command == "windows":
@@ -219,6 +264,11 @@ class Shell:
             self.notification_centre.toggle()
         elif command == "settings":
             self.open_settings()
+        elif command.startswith("tag "):
+            try:
+                self.switch_tag(int(command.split(" ", 1)[1]))
+            except ValueError:
+                pass
         elif command.startswith("settings:"):
             self.settings.section = command.split(":", 1)[1]
             self.open_settings()
@@ -241,12 +291,127 @@ class Shell:
             actions.close_window()
         elif command == "lock":
             actions.lock_session()
+        elif command == "debug":
+            self._debug()
+
+    def _debug(self):
+        """Write the state of the panels to the journal."""
+        entries = state.toplevels()
+        activated = [entry.get("title") for entry in entries
+                     if entry.get("activated")]
+        print(f"macshell: tag={self._tag} focus_key={self._focus_key} "
+              f"focus_tag={self._focus_tag} activated={activated} "
+              f"in_front={self._app_in_front()} "
+              f"dock_mode={self.metrics.config.get('dock_mode')} "
+              f"dock_shown={self._dock_shown} visible={self.dock.get_visible()} "
+              f"slide={self.dock._slide_value}", file=sys.stderr, flush=True)
 
     def _tick(self):
         if self.metrics.reload():
             self._repaint()
         self.menubar.refresh()
         return True
+
+    def _tick_panels(self):
+        """The dock and the notch follow the pointer and the focus."""
+        self._sync_panels()
+        return True
+
+    # -- the auto hiding dock and notch --------------------------------------
+    #
+    # macOS keeps the dock on the desktop, but it steps out of the way as
+    # soon as an application takes the focus and comes back when the
+    # pointer reaches the edge of the screen.  The same goes for the notch:
+    # it is out of sight until the pointer reaches the top of the display.
+    #
+    # Three modes are possible for each of them:
+    #
+    #   always   the panel never hides
+    #   desktop  the panel is visible while the desktop shows
+    #   auto     the panel is only visible at the edge of the screen
+
+    def pointer_moved(self, edge, absolute_y):
+        """The pointer reached the top or the bottom of the screen."""
+        screen_h = self.metrics.height or 768
+        now = time.monotonic()
+        if edge == "top":
+            if absolute_y <= 6:
+                self._notch_until = now + 2.5
+            elif absolute_y > 60:
+                self._notch_until = 0
+        else:
+            if absolute_y >= screen_h - 6:
+                self._dock_until = now + 2.5
+            elif absolute_y < screen_h - 170:
+                self._dock_until = 0
+        self._sync_panels()
+
+    def keep_alive(self, which):
+        """The pointer is over a panel, so it stays visible."""
+        now = time.monotonic()
+        if which == "dock":
+            self._dock_until = now + 2.5
+        else:
+            self._notch_until = now + 2.5
+
+    def _app_in_front(self):
+        """True when an application window covers the screen.
+
+        River keeps the activation of the last focused window, even when
+        the window sits on another workspace, so the activation alone is
+        not enough: the window is only in front when it was focused on the
+        workspace that is on screen now.
+        """
+        key = None
+        for entry in state.toplevels():
+            if entry.get("activated"):
+                key = (entry.get("app_id") or "", entry.get("title") or "")
+                break
+        if key is None:
+            self._focus_key = None
+            return False
+        if key != self._focus_key:
+            # another window took the focus: it belongs to this workspace
+            self._focus_key = key
+            self._focus_tag = self._tag
+            return True
+        return self._focus_tag == self._tag
+
+    def _sync_panels(self):
+        """Show or hide the dock and the notch the way macOS does."""
+        cfg = self.metrics.config
+        now = time.monotonic()
+
+        # -- the dock ------------------------------------------------------
+        show_dock = bool(cfg.get("show_dock", True))
+        if show_dock:
+            mode = cfg.get("dock_mode", "desktop")
+            if mode == "always":
+                pass
+            elif self._dock_until > now:
+                pass
+            elif mode == "desktop" and not self._app_in_front():
+                # the desktop shows: the dock belongs on the screen
+                pass
+            else:
+                show_dock = False
+        if show_dock != self._dock_shown:
+            self._dock_shown = show_dock
+            self.dock.set_shown(show_dock)
+
+        # -- the notch -----------------------------------------------------
+        show_notch = bool(cfg.get("show_notch", True))
+        if show_notch:
+            mode = cfg.get("notch_mode", "auto")
+            if mode == "always":
+                pass
+            elif self._notch_until > now:
+                pass
+            else:
+                show_notch = False
+        if show_notch != self._notch_shown:
+            self._notch_shown = show_notch
+            self.notch.set_shown(show_notch)
 
     def _repaint(self):
         for window in self.windows:
@@ -315,6 +480,7 @@ class Shell:
     def open_clipboard(self):
         """The clipboard history, the way the notch shows it."""
         rows = []
+        text = ""
         try:
             out = subprocess.run(["cliphist", "list"], capture_output=True,
                                  text=True, timeout=3).stdout
@@ -340,10 +506,32 @@ class Shell:
         if not rows:
             rows.append({"glyph": "clipboard", "label": "The clipboard is empty",
                          "detail": "", "active": False, "action": None})
+        else:
+            # the writing tools, the way macOS offers them above the
+            # clipboard history
+            rows.insert(0, {
+                "glyph": "sparkles",
+                "label": "Writing Tools…",
+                "detail": "",
+                "active": False,
+                "action": lambda: self.open_writing_tools(rows[1]["label"]
+                                                         if len(rows) > 1 else ""),
+            })
         menu = self.popups.get("clipboard")
         if menu is None:
             menu = self.popups["wifi"]
         menu.show_items("Clipboard", rows, anchor_x=None)
+
+    def open_writing_tools(self, text=""):
+        """The Writing Tools: rewrite, proofread, summarise a text."""
+        if not text:
+            try:
+                text = subprocess.run(["wl-paste", "--no-newline"],
+                                      capture_output=True, text=True,
+                                      timeout=3).stdout.strip()
+            except (OSError, subprocess.SubprocessError):
+                text = ""
+        self.assistant.open("write", source=text)
 
     def open_focus_menu(self):
         """The focus modes, the way the Control Centre lists them."""
@@ -445,10 +633,10 @@ class Shell:
     # -- syncing the config with the panels ---------------------------------
 
     def sync_dock(self):
-        self.dock.set_visible(self.metrics.config.get("show_dock", True))
+        self._sync_panels()
 
     def sync_notch(self):
-        self.notch.set_visible(self.metrics.config.get("show_notch", True))
+        self._sync_panels()
 
     def sync_widgets(self):
         self.widgets.set_visible(self.metrics.config.get("show_widgets", True))
@@ -464,6 +652,13 @@ class Shell:
     def window_list(self):
         return state.window_list()
 
+    def toplevel_state(self):
+        return state.toplevels()
+
+    def activate_app(self, app_id):
+        """Bring an application to the front."""
+        state.activate_app(app_id)
+
     def activate_window(self, title):
         actions.activate_window(title)
 
@@ -473,7 +668,6 @@ class Shell:
     def switch_tag(self, tag):
         self._tag = tag
         actions.switch_tag(tag)
-
     # -- panel visibility ----------------------------------------------------
 
     def _set_config(self, key, value):
@@ -482,11 +676,13 @@ class Shell:
 
     def show_dock(self):
         self._set_config("show_dock", True)
-        self.dock.set_visible(True)
+        self._dock_until = time.monotonic() + 2.5
+        self._sync_panels()
 
     def hide_dock(self):
         self._set_config("show_dock", False)
-        self.dock.set_visible(False)
+        self._dock_until = 0
+        self._sync_panels()
 
     def toggle_dock(self):
         if self.metrics.config.get("show_dock", True):
@@ -496,11 +692,13 @@ class Shell:
 
     def show_notch(self):
         self._set_config("show_notch", True)
-        self.notch.set_visible(True)
+        self._notch_until = time.monotonic() + 2.5
+        self._sync_panels()
 
     def hide_notch(self):
         self._set_config("show_notch", False)
-        self.notch.set_visible(False)
+        self._notch_until = 0
+        self._sync_panels()
 
     def toggle_notch(self):
         if self.metrics.config.get("show_notch", True):

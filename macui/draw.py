@@ -160,6 +160,19 @@ def fill_squircle(cr, x, y, w, h, radius, color, exponent=5.0):
     cr.restore()
 
 
+def scrim(cr, x, y, w, h, radius, color, exponent=5.0):
+    """A flat layer under a glass panel.
+
+    The shell has no blur behind the panels, so a dark scrim keeps the
+    text readable when a busy window sits behind them.
+    """
+    cr.save()
+    squircle_path(cr, x, y, w, h, radius, exponent)
+    cr.set_source_rgba(*color)
+    cr.fill()
+    cr.restore()
+
+
 def stroke_squircle(cr, x, y, w, h, radius, color, width=1.0, exponent=5.0):
     cr.save()
     squircle_path(cr, x, y, w, h, radius, exponent)
@@ -189,8 +202,12 @@ def text_width(cr, text, size, weight="normal", family="SF Pro Text"):
 
 def draw_text(cr, x, y, text, size, color, *, weight="normal",
               family="SF Pro Text", align="left", max_width=None,
-              ellipsize=False, baseline="top"):
-    """Draw a single line of text.  Returns the layout width in pixels."""
+              ellipsize=False, baseline="top", shadow=None):
+    """Draw a single line of text.  Returns the layout width in pixels.
+
+    ``shadow`` paints a blurred copy behind the text, which keeps the
+    labels of the desktop icons readable on a light wallpaper.
+    """
     layout = PangoCairo.create_layout(cr)
     layout.set_font_description(_font_desc(size, weight, family))
     layout.set_text(text)
@@ -212,12 +229,42 @@ def draw_text(cr, x, y, text, size, color, *, weight="normal",
     elif baseline == "bottom":
         py = y - lh
 
+    if shadow is not None:
+        cr.save()
+        cr.set_source_rgba(*shadow)
+        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            cr.move_to(px + dx, py + dy)
+            PangoCairo.show_layout(cr, layout)
+        cr.restore()
+
     cr.save()
     cr.set_source_rgba(*color)
     cr.move_to(px, py)
     PangoCairo.show_layout(cr, layout)
     cr.restore()
     return lw
+
+
+def draw_paragraph(cr, x, y, w, text, size, color, *, weight="normal",
+                   family="SF Pro Text", line_height=None, max_lines=None):
+    """Draw a wrapped block of text.  Returns the height it used."""
+    layout = PangoCairo.create_layout(cr)
+    layout.set_font_description(_font_desc(size, weight, family))
+    layout.set_text(text or "")
+    layout.set_width(max(1, int(w)) * Pango.SCALE)
+    layout.set_wrap(Pango.WrapMode.WORD_CHAR)
+    if max_lines:
+        layout.set_ellipsize(Pango.EllipsizeMode.END)
+        layout.set_lines(max_lines)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.move_to(x, y)
+    PangoCairo.show_layout(cr, layout)
+    cr.restore()
+    height = layout.get_pixel_size()[1]
+    if line_height:
+        height = max(height, line_height * layout.get_line_count())
+    return height
 
 
 # --- icons -----------------------------------------------------------------

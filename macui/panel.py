@@ -8,6 +8,8 @@ used to.
 
 from __future__ import annotations
 
+import ctypes
+
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -17,9 +19,74 @@ gi.require_version("GtkLayerShell", "0.1")
 from gi.repository import Gdk, GLib, Gtk, GtkLayerShell  # noqa: E402
 
 
+# --- input regions ---------------------------------------------------------
+#
+# GDK keeps GdkRegion to itself, so the region is built with cairo and
+# handed over with ctypes.  Since GDK 3.22 a GdkRegion *is* a cairo
+# region, so the two libraries understand each other.
+
+class _RectInt(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_int), ("y", ctypes.c_int),
+                ("width", ctypes.c_int), ("height", ctypes.c_int)]
+
+
+def _load_shape_api():
+    try:
+        cairo = ctypes.CDLL("libcairo.so.2")
+        gdk = ctypes.CDLL("libgdk-3.so.0")
+        cairo.cairo_region_create.restype = ctypes.c_void_p
+        cairo.cairo_region_create.argtypes = []
+        cairo.cairo_region_union_rectangle.restype = ctypes.c_int
+        cairo.cairo_region_union_rectangle.argtypes = [
+            ctypes.c_void_p, ctypes.POINTER(_RectInt)]
+        cairo.cairo_region_destroy.argtypes = [ctypes.c_void_p]
+        gdk.gdk_window_input_shape_combine_region.restype = None
+        gdk.gdk_window_input_shape_combine_region.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
+        capsule = ctypes.pythonapi.PyCapsule_GetPointer
+        capsule.restype = ctypes.c_void_p
+        capsule.argtypes = [ctypes.py_object, ctypes.c_char_p]
+        return cairo, gdk, capsule
+    except Exception:  # noqa: BLE001
+        return None, None, None
+
+
+_CAIRO, _GDK, _CAPSULE = _load_shape_api()
+
+
+ENTRY_CSS = """
+entry {
+    background: transparent;
+    border: none;
+    color: __COLOUR__;
+    caret-color: __COLOUR__;
+    font-family: "SF Pro Text";
+    font-size: __SIZE__px;
+    padding: 0;
+}
+entry:focus { box-shadow: none; outline: none; }
+"""
+
+
+def entry_css(theme="dark", size=15):
+    """The style of the text fields, in the colours of the theme."""
+    colour = "#ffffff" if theme == "dark" else "#1b1b21"
+    return (ENTRY_CSS.replace("__COLOUR__", colour)
+            .replace("__SIZE__", str(size)).encode())
+
+
+def apply_entry_css(css):
+    """Make the style of the text fields known to the whole screen."""
+    provider = Gtk.CssProvider()
+    provider.load_from_data(css)
+    Gtk.StyleContext.add_provider_for_screen(
+        Gdk.Screen.get_default(), provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+    )
+
+
 class Panel(Gtk.Window):
     """A layer-shell surface drawn with Cairo."""
-
     NAMESPACE = "mac-panel"
 
     def __init__(self, metrics, *, layer="overlay", anchors=None, margins=None,
@@ -37,6 +104,12 @@ class Panel(Gtk.Window):
         self.set_skip_pager_hint(True)
         self.set_keep_above(True)
         self.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
+
+        self._slide_edge = "bottom"
+        self._slide_value = 0.0
+        self._slide_target = 0.0
+        self._slide_timer = None
+        self._slide_done = None
 
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_namespace(self, namespace or self.NAMESPACE)
@@ -86,7 +159,88 @@ class Panel(Gtk.Window):
         self.connect("enter-notify-event", self._on_enter)
         self.connect("leave-notify-event", self._on_leave)
         self.connect("scroll-event", self._on_scroll)
+        self.connect("map-event", self._on_map)
         self.connect("destroy", Gtk.main_quit)
+
+    # -- the input region ----------------------------------------------------
+    #
+    # A layer shell surface takes the pointer over its whole rectangle, even
+    # where it is transparent.  A dock that lives in a tall surface would
+    # therefore swallow the clicks of every window underneath it.  The
+    # panels that draw a small card inside a big surface say which
+    # rectangles should take the pointer; the rest of the surface is
+    # transparent to the pointer.
+
+    def input_rects(self):
+        """The rectangles of the surface that take the pointer.
+
+        None means the whole surface.  Return a list of (x, y, w, h) tuples
+        in the surface's own coordinates.
+        """
+        return None
+
+    def update_input_region(self):
+        """Apply the input rectangles to the surface."""
+        rects = self.input_rects()
+        if not rects or _GDK is None:
+            return
+        window = self.get_window()
+        if window is None:
+            return
+        region = None
+        try:
+            region = _CAIRO.cairo_region_create()
+            for x, y, w, h in rects:
+                if w <= 0 or h <= 0:
+                    continue
+                rect = _RectInt(int(x), int(y), int(w), int(h))
+                _CAIRO.cairo_region_union_rectangle(region, ctypes.byref(rect))
+            pointer = _CAPSULE(window.__gpointer__, None)
+            _GDK.gdk_window_input_shape_combine_region(pointer, region, 0, 0)
+        except Exception:  # noqa: BLE001
+            # a panel that cannot shape its input simply keeps the whole
+            # surface, which is what the shell did before
+            pass
+        finally:
+            if region:
+                _CAIRO.cairo_region_destroy(region)
+
+    def _on_map(self, *_args):
+        # the surface only exists once the window is on screen
+        self.update_input_region()
+        return False
+
+    # -- sliding -------------------------------------------------------------
+
+    def slide(self, edge, target, done=None):
+        """Animate the surface's margin on one edge.
+
+        A negative margin pushes the surface off the screen, which is how
+        the dock slides down and the notch slides up the way macOS does it.
+        """
+        self._slide_edge = edge
+        self._slide_target = float(target)
+        self._slide_done = done
+        if self._slide_timer is None:
+            self._slide_timer = GLib.timeout_add(16, self._slide_step)
+
+    def _slide_step(self):
+        current = self._slide_value
+        target = self._slide_target
+        if abs(target - current) < 1.0:
+            self._slide_value = target
+            self._apply_slide()
+            self._slide_timer = None
+            if self._slide_done:
+                self._slide_done()
+            return False
+        self._slide_value = current + (target - current) * 0.4
+        self._apply_slide()
+        return True
+
+    def _apply_slide(self):
+        edge = getattr(GtkLayerShell.Edge, self._slide_edge.upper())
+        GtkLayerShell.set_margin(self, edge, int(self._slide_value))
 
     # -- geometry helpers ---------------------------------------------------
 

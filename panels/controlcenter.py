@@ -7,6 +7,9 @@ This module reproduces that arrangement.
 
 from __future__ import annotations
 
+import os
+import subprocess
+
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -61,20 +64,34 @@ class ControlCentre(Panel):
 
         regions = []
 
+        # -- now playing, across the top of the panel --------------------
+        regions.append({
+            "kind": "media", "x": left_x, "y": pad, "w": width - pad * 2,
+            "h": m.px("cc_media_h"),
+        })
+
+        top = pad + m.px("cc_media_h") + m.px("cc_section_gap")
+
         # -- left column --------------------------------------------------
-        y = pad
+        y = top
         regions.append({
             "kind": "pill", "id": "wifi", "glyph": "wifi", "label": "Wi-Fi",
             "x": left_x, "y": y, "w": col_w, "h": m.px("cc_pill_h"),
         })
         y += m.px("cc_pill_h") + gap
 
+        circle = m.px("cc_circle")
         regions.append({
             "kind": "circle", "id": "bluetooth", "glyph": "bluetooth",
             "label": "Bluetooth",
-            "x": left_x, "y": y, "w": m.px("cc_circle"), "h": m.px("cc_circle"),
+            "x": left_x, "y": y, "w": circle, "h": circle,
         })
-        y += m.px("cc_circle") + gap
+        regions.append({
+            "kind": "circle", "id": "stage", "glyph": "grid",
+            "label": "Stage Manager",
+            "x": left_x + circle + gap, "y": y, "w": circle, "h": circle,
+        })
+        y += circle + gap
 
         regions.append({
             "kind": "pill", "id": "focus", "glyph": "moon", "label": "Focus",
@@ -99,34 +116,27 @@ class ControlCentre(Panel):
         left_bottom = y
 
         # -- right column -------------------------------------------------
-        y = pad
-        regions.append({
-            "kind": "media", "x": right_x, "y": y, "w": col_w,
-            "h": m.px("cc_media_h"),
-        })
-        y += m.px("cc_media_h") + gap
-
+        y = top
         for tile in ({"id": "airplay", "glyph": "airplay"},
                      {"id": "display", "glyph": "display"}):
             regions.append({
                 "kind": "circle", "id": tile["id"], "glyph": tile["glyph"],
                 "label": tile["id"],
-                "x": right_x, "y": y, "w": m.px("cc_circle"),
-                "h": m.px("cc_circle"),
+                "x": right_x, "y": y, "w": circle, "h": circle,
             })
-            right_x += m.px("cc_circle") + gap
+            right_x += circle + gap
         right_x = self._columns(width)[2]
-        y += m.px("cc_circle") + m.px("cc_section_gap")
+        y += circle + m.px("cc_section_gap")
 
         utilities = [
             ("accessibility", "accessibility"),
             ("appearance", "moon"),
             ("launchpad", "grid"),
             ("spotlight", "spotlight"),
-            ("mirror", "airplay"),
-            ("sound", "speaker"),
-            ("control", "control_center"),
-            ("display", "display"),
+            ("stage", "grid"),
+            ("nightshift", "moon"),
+            ("wallpaper", "display"),
+            ("settings", "grid"),
         ]
         small = m.px("cc_small_circle")
         for index, (uid, glyph) in enumerate(utilities):
@@ -182,6 +192,13 @@ class ControlCentre(Panel):
         m = self.metrics
         pal = m.palette()
         total = self._layout(width)
+        # a dark layer under the glass, so the panel stays readable when a
+        # busy window sits behind it
+        dark = m.config.get("theme", "dark") == "dark"
+        scrim = ((0.06, 0.06, 0.08, 0.60) if dark
+                 else (1.0, 1.0, 1.0, 0.78))
+        draw.scrim(cr, 0, 0, width, total, m.px("cc_radius"), scrim,
+                   m.squareness)
         draw.glass_panel(cr, 0, 0, width, total, m.px("cc_radius"), pal,
                          exponent=m.squareness, shadow=True, shadow_spread=18)
 
@@ -283,30 +300,92 @@ class ControlCentre(Panel):
 
     def _paint_media(self, cr, region, pal):
         m = self.metrics
-        art = 34 * m.scale
+        art = 52 * m.scale
         x, y = region["x"], region["y"]
         w = region["w"]
         media = self._media
 
-        art_x = x + (w - art) / 2
-        draw.fill_squircle(cr, art_x, y + 8 * m.scale, art, art, art * 0.18,
+        art_x = x
+        art_y = y + (region["h"] - art) / 2
+        draw.fill_squircle(cr, art_x, art_y, art, art, art * 0.16,
                            pal["fill"], m.squareness)
         if media:
-            draw.draw_text(cr, art_x + art / 2, y + 8 * m.scale + art / 2,
-                           (media[0] or "?")[0].upper(), art * 0.5, pal["text"],
-                           weight="bold", align="center", baseline="middle")
+            draw.draw_text(cr, art_x + art / 2, art_y + art / 2,
+                           (media[0] or "?")[0].upper(), art * 0.46,
+                           pal["text"], weight="bold", align="center",
+                           baseline="middle")
         else:
-            glyphs.speaker(cr, art_x + art * 0.28, y + 8 * m.scale + art * 0.28,
+            glyphs.speaker(cr, art_x + art * 0.28, art_y + art * 0.28,
                            art * 0.44, pal["text_dim"])
+
+        # the playback buttons on the right
+        button = 26 * m.scale
+        gap = 8 * m.scale
+        bx = x + w - (3 * button + 2 * gap)
+        by = y + (region["h"] - button) / 2
+        region["buttons"] = []
+        for action, shape in (("previous", "back"), ("play-pause", "play"),
+                              ("next", "forward")):
+            cr.save()
+            cr.set_source_rgba(*pal["fill_hover"])
+            cr.arc(bx + button / 2, by + button / 2, button / 2, 0,
+                   2 * 3.14159)
+            cr.fill()
+            cr.restore()
+            self._paint_play_glyph(cr, shape, bx + button / 2 - 6 * m.scale,
+                                   by + button / 2 - 6 * m.scale, 12 * m.scale,
+                                   pal["text"])
+            region["buttons"].append((action, bx, by, button))
+            bx += button + gap
+
+        text_x = art_x + art + 12 * m.scale
+        text_w = max(40 * m.scale,
+                     region["buttons"][0][1] - text_x - 12 * m.scale)
 
         title = media[0] if media else "Not Playing"
         artist = media[1] if media else "—"
-        draw.draw_text(cr, x + w / 2, y + art + 26 * m.scale, title,
+        draw.draw_text(cr, text_x, y + region["h"] * 0.38, title,
                        m.font("cc_font_size_bold"), pal["text"], weight="bold",
-                       align="center", max_width=w - 8 * m.scale, ellipsize=True)
-        draw.draw_text(cr, x + w / 2, y + art + 42 * m.scale, artist or "—",
-                       m.font("cc_font_size"), pal["text_dim"], align="center",
-                       max_width=w - 8 * m.scale, ellipsize=True)
+                       max_width=text_w, ellipsize=True)
+        draw.draw_text(cr, text_x, y + region["h"] * 0.64, artist or "—",
+                       m.font("cc_font_size"), pal["text_dim"],
+                       max_width=text_w, ellipsize=True)
+
+        if media and media[4]:
+            ratio = max(0.0, min(1.0, media[3] / media[4]))
+            track_y = y + region["h"] * 0.82
+            draw.fill_squircle(cr, text_x, track_y, text_w, 3 * m.scale,
+                               1.5 * m.scale, pal["fill_hover"], 2.0)
+            draw.fill_squircle(cr, text_x, track_y, text_w * ratio,
+                               3 * m.scale, 1.5 * m.scale, pal["accent"], 2.0)
+
+    def _paint_play_glyph(self, cr, shape, x, y, size, color):
+        """The little triangles of the playback buttons."""
+        cr.save()
+        cr.set_source_rgba(*color)
+        if shape == "play":
+            cr.move_to(x + size * 0.28, y)
+            cr.line_to(x + size * 0.28, y + size)
+            cr.line_to(x + size * 0.85, y + size / 2)
+            cr.close_path()
+            cr.fill()
+        elif shape == "back":
+            cr.move_to(x + size * 0.72, y)
+            cr.line_to(x + size * 0.72, y + size)
+            cr.line_to(x + size * 0.10, y + size / 2)
+            cr.close_path()
+            cr.fill()
+            cr.rectangle(x + size * 0.02, y, size * 0.14, size)
+            cr.fill()
+        else:
+            cr.move_to(x + size * 0.28, y)
+            cr.line_to(x + size * 0.28, y + size)
+            cr.line_to(x + size * 0.85, y + size / 2)
+            cr.close_path()
+            cr.fill()
+            cr.rectangle(x + size * 0.84, y, size * 0.14, size)
+            cr.fill()
+        cr.restore()
 
     def _paint_power(self, cr, region, pal):
         m = self.metrics
@@ -335,7 +414,7 @@ class ControlCentre(Panel):
         m = self.metrics
         x, y, w, h = region["x"], region["y"], region["w"], region["h"]
         draw.fill_squircle(cr, x, y, w, h, h / 2, pal["fill_hover"], 2.0)
-        draw.draw_text(cr, x + w / 2, y + h / 2, "Exit Controls",
+        draw.draw_text(cr, x + w / 2, y + h / 2, "Settings…",
                        m.font("cc_font_size"), pal["text_dim"],
                        align="center", baseline="middle")
 
@@ -391,6 +470,10 @@ class ControlCentre(Panel):
                     and region["y"] <= y <= region["y"] + region["h"]):
                 continue
             kind = region["kind"]
+            if kind == "media":
+                if self._media_button(region, x, y):
+                    return True
+                continue
             if kind == "pill":
                 self._activate(region["id"])
             elif kind == "circle":
@@ -405,27 +488,44 @@ class ControlCentre(Panel):
                 else:
                     actions.log_out()
             elif kind == "exit":
-                self.hide()
+                self.shell.open_settings()
             return True
+        return False
+
+    def _media_button(self, region, x, y):
+        """The playback buttons of the now playing card."""
+        for action, bx, by, size in region.get("buttons", []):
+            if bx <= x <= bx + size and by <= y <= by + size:
+                subprocess.Popen(["playerctl", action], stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+                GLib.timeout_add(400, self.refresh)
+                return True
         return False
 
     def _activate(self, region_id):
         if region_id == "wifi":
-            state.toggle_wifi()
+            # the networks list, the way macOS opens it
+            self.shell.open_popup("wifi", self._columns(
+                self.content_size()[0])[0])
         elif region_id == "bluetooth":
-            state.toggle_bluetooth()
+            self.shell.open_popup("bluetooth", self._columns(
+                self.content_size()[0])[0])
         elif region_id == "focus":
-            state.toggle_dnd()
+            self.shell.open_focus_menu()
         elif region_id == "appearance":
             state.toggle_theme()
         elif region_id == "launchpad":
-            state.spawn("wofi --show drun")
+            self.shell.open_launchpad()
         elif region_id == "spotlight":
             self.shell.open_spotlight()
-        elif region_id == "sound":
-            state.toggle_mute()
-        elif region_id == "control":
-            self.hide()
+        elif region_id == "stage":
+            self.shell.stage_manager.toggle()
+        elif region_id == "nightshift":
+            state.spawn(f"{os.path.expanduser('~/.config/river/nightlight.py')}")
+        elif region_id == "wallpaper":
+            state.spawn(f"{os.path.expanduser('~/.config/river/wallpaper-pick.sh')}")
+        elif region_id == "settings":
+            self.shell.open_settings()
         GLib.timeout_add(200, self.refresh)
 
     def _set_slider(self, region, x):

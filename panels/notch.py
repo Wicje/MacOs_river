@@ -60,6 +60,23 @@ class Notch(Panel):
         self._battery = None
         self._charging = False
 
+    # -- visibility ----------------------------------------------------------
+
+    def set_shown(self, shown):
+        """Slide the notch in or out of the screen.
+
+        The card hangs from the top edge, so hiding it means sliding it up
+        and out of the way, exactly like macOS does when the pointer is
+        not near the top of the display.
+        """
+        if shown:
+            self.show_all()
+            self.slide("top", 0)
+            self.redraw()
+            return
+        self.slide("top", -self.metrics.px("notch_height"),
+                   done=lambda: self.hide())
+
     # -- state ---------------------------------------------------------------
 
     def refresh(self):
@@ -97,17 +114,26 @@ class Notch(Panel):
         radius = m.px("notch_radius")
         scale = m.scale
 
-        # the card: a black rounded rectangle hanging from the top edge
+        # the card: a rounded rectangle hanging from the top edge, in the
+        # colours of the theme so the text stays readable
         cr.save()
         draw.rounded_path(cr, 0, 0, width, height, radius)
         cr.clip()
+        dark = m.config.get("theme", "dark") == "dark"
         grad = cairo.LinearGradient(0, 0, 0, height)
-        grad.add_color_stop_rgba(0.0, 0.03, 0.03, 0.04, 1.0)
-        grad.add_color_stop_rgba(1.0, 0.06, 0.06, 0.08, 0.98)
+        if dark:
+            grad.add_color_stop_rgba(0.0, 0.03, 0.03, 0.04, 1.0)
+            grad.add_color_stop_rgba(1.0, 0.06, 0.06, 0.08, 0.98)
+        else:
+            grad.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 0.97)
+            grad.add_color_stop_rgba(1.0, 0.93, 0.93, 0.95, 0.95)
         cr.set_source(grad)
         cr.rectangle(0, 0, width, height)
         cr.fill()
         cr.restore()
+        if not dark:
+            draw.stroke_squircle(cr, 0, 0, width, height, radius,
+                                 pal["separator"], 1.0, m.squareness)
 
         self._buttons = []
         pad = m.px("notch_pad")
@@ -173,6 +199,7 @@ class Notch(Panel):
             ("clipboard", "clipboard", "Clipboard"),
             ("focus", "moon", "Focus"),
             ("screenshot", "camera", "Screenshot"),
+            ("assistant", "sparkles", "Ask"),
         ]
         for index, (action, glyph, label) in enumerate(actions):
             cx = mid_x + (index - 1) * (button + 12 * scale)
@@ -258,6 +285,10 @@ class Notch(Panel):
 
     # -- input ---------------------------------------------------------------
 
+    def on_motion(self, x, y):
+        self.shell.keep_alive("notch")
+        return False
+
     def on_click(self, x, y, button):
         for action, bx, by, size in self._buttons:
             if bx <= x <= bx + size and by <= y <= by + size:
@@ -277,3 +308,5 @@ class Notch(Panel):
             subprocess.Popen([SCREENSHOT, "region"], start_new_session=True,
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
+        elif action == "assistant":
+            self.shell.assistant.open("ask")

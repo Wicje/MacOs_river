@@ -244,6 +244,31 @@ class Settings(Panel):
                                 lambda _x=None, name=name: self._set("accent", name)))
         y += 52 * scale
 
+        # the Liquid Glass controls of macOS
+        draw.draw_text(cr, x, y, "Liquid Glass", 11 * scale, pal["text_faint"],
+                       baseline="middle")
+        y += 24 * scale
+
+        opacity = float(cfg.get("glass_opacity", 1.0))
+        draw.draw_text(cr, x, y, "Opacity", 11 * scale, pal["text"], baseline="middle")
+        self._slider(cr, x + 110 * scale, y, w - 180 * scale, scale, pal,
+                     int((opacity - 0.5) / 1.0 * 100),
+                     lambda value: self._set("glass_opacity",
+                                             round(0.5 + value / 100.0, 2)))
+        draw.draw_text(cr, x + w, y, f"{round(opacity * 100)}%", 11 * scale,
+                       pal["text_dim"], align="right", baseline="middle")
+        y += 38 * scale
+
+        tint = float(cfg.get("glass_tint", 0.0))
+        draw.draw_text(cr, x, y, "Tint", 11 * scale, pal["text"], baseline="middle")
+        self._slider(cr, x + 110 * scale, y, w - 180 * scale, scale, pal,
+                     int(tint * 100),
+                     lambda value: self._set("glass_tint",
+                                             round(value / 100.0, 2)))
+        draw.draw_text(cr, x + w, y, f"{round(tint * 100)}%", 11 * scale,
+                       pal["text_dim"], align="right", baseline="middle")
+        y += 44 * scale
+
         self._switch_row(cr, x, y, w, scale, pal, "Reduce transparency",
                          "reduce_transparency", False)
 
@@ -254,8 +279,17 @@ class Settings(Panel):
         self._switch_row(cr, x, y, w, scale, pal, "Show the Dock",
                          "show_dock", True, action=self.shell.sync_dock)
         y += 38 * scale
+        self._segment_row(cr, x, y, w, scale, pal, "Dock behaviour", "dock_mode",
+                          (("always", "Always"), ("desktop", "Desktop"),
+                           ("auto", "Auto")),
+                          "desktop", action=self.shell.sync_dock)
+        y += 38 * scale
         self._switch_row(cr, x, y, w, scale, pal, "Show the notch",
                          "show_notch", True, action=self.shell.sync_notch)
+        y += 38 * scale
+        self._segment_row(cr, x, y, w, scale, pal, "Notch behaviour", "notch_mode",
+                          (("always", "Always"), ("auto", "Auto")),
+                          "auto", action=self.shell.sync_notch)
         y += 38 * scale
         self._switch_row(cr, x, y, w, scale, pal, "Show the widgets",
                          "show_widgets", True, action=self.shell.sync_widgets)
@@ -337,7 +371,12 @@ class Settings(Panel):
                     action=None):
         m = self.metrics
         cfg = self._config()
-        on = cfg.get(key, default)
+        value = cfg.get(key, default)
+        if isinstance(default, str):
+            # a string setting is a switch between two states
+            on = value != default
+        else:
+            on = value
         draw.draw_text(cr, x, y, label, m.font("cc_font_size"), pal["text"],
                        baseline="middle")
         switch_w = 38 * scale
@@ -345,13 +384,56 @@ class Settings(Panel):
         sx = x + w - switch_w
         sy = y - switch_h / 2
         draw.fill_squircle(cr, sx, sy, switch_w, switch_h, switch_h / 2,
-                           pal["accent"] if on else pal["fill_hover"], 2.0)
+                           pal["accent"] if on else pal.get(
+                               "switch_off", pal["fill_hover"]), 2.0)
         knob = switch_h - 4 * scale
         kx = sx + switch_w - knob - 2 * scale if on else sx + 2 * scale
         draw.fill_squircle(cr, kx, sy + 2 * scale, knob, knob, knob / 2,
                            pal["on_accent"], 2.0)
-        self._rows.append((sx, sy, switch_w, switch_h,
-                            lambda _x=None: (self._toggle(key), action and action())))
+        if isinstance(default, str):
+            other = "auto" if default == "always" else "always"
+            def _flip(_x=None, key=key, other=other, action=action):
+                self._set(key, other)
+                if action:
+                    action()
+        else:
+            def _flip(_x=None, key=key, action=action):
+                self._toggle(key)
+                if action:
+                    action()
+        self._rows.append((sx, sy, switch_w, switch_h, _flip))
+
+    def _segment_row(self, cr, x, y, w, scale, pal, label, key, options,
+                     default, action=None):
+        """A row of small buttons, the way macOS offers a choice."""
+        m = self.metrics
+        cfg = self._config()
+        current = cfg.get(key, default)
+        draw.draw_text(cr, x, y, label, m.font("cc_font_size"), pal["text"],
+                       baseline="middle")
+        btn_w = 76 * scale
+        btn_h = 22 * scale
+        gap = 6 * scale
+        bx = x + w - (len(options) * btn_w + (len(options) - 1) * gap)
+        by = y - btn_h / 2
+        for index, (value, title) in enumerate(options):
+            cx = bx + index * (btn_w + gap)
+            active = current == value
+            draw.fill_squircle(cr, cx, by, btn_w, btn_h, btn_h / 2,
+                               pal["accent"] if active else pal["fill_hover"],
+                               2.0)
+            draw.draw_text(cr, cx + btn_w / 2, y, title,
+                           m.font("cc_font_size"),
+                           pal["on_accent"] if active else pal["text"],
+                           align="center", baseline="middle")
+            self._rows.append((cx, by, btn_w, btn_h,
+                                lambda _x=None, value=value: self._pick(key, value,
+                                                                        action)))
+
+    def _pick(self, key, value, action=None):
+        self._set(key, value)
+        if action:
+            action()
 
     def _slider(self, cr, x, y, w, scale, pal, value, callback):
         m = self.metrics

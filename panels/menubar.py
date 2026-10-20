@@ -151,6 +151,12 @@ class MenuBar(Panel):
 
     # -- input ---------------------------------------------------------------
 
+    def on_motion(self, x, y):
+        # the menu bar covers the whole top of the screen, so it doubles as
+        # the sensor that brings the notch back
+        self.shell.pointer_moved("top", y)
+        return False
+
     def on_click(self, x, y, button):
         m = self.metrics
         if hasattr(self, "_clock_x") and \

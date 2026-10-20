@@ -94,7 +94,7 @@ class DesktopIcons(Panel):
             draw.draw_text(cr, x + size / 2, y + size + 10 * m.scale, name,
                            10 * m.scale, pal["text"], align="center",
                            baseline="middle", max_width=size + 24 * m.scale,
-                           ellipsize=True)
+                           ellipsize=True, shadow=(0, 0, 0, 0.55))
             y += size + gap + 14 * m.scale
 
     def _icon_for(self, path):

@@ -21,20 +21,8 @@ gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, Gtk  # noqa: E402
 
 from ..macui import draw, glyphs  # noqa: E402
+from ..macui import panel as panel_module  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
-
-ENTRY_CSS = b"""
-entry {
-    background: transparent;
-    border: none;
-    color: #ffffff;
-    font-family: "SF Pro Text";
-    font-size: 15px;
-    caret-color: #ffffff;
-    padding: 0;
-}
-entry:focus { box-shadow: none; outline: none; }
-"""
 
 DESKTOP_DIRS = (
     "~/.local/share/applications",
@@ -102,7 +90,8 @@ class Spotlight(Panel):
         self.set_content_size(-1, self.card_height())
 
         provider = Gtk.CssProvider()
-        provider.load_from_data(ENTRY_CSS)
+        provider.load_from_data(panel_module.entry_css(
+            metrics.config.get("theme", "dark")))
         Gtk.StyleContext.add_provider_for_screen(
             Gdk.Screen.get_default(), provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
