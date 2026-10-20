@@ -149,6 +149,7 @@ DEFAULTS = {
     "accent": "blue",
     "reduce_transparency": False,
     "wallpaper_rotate": True,
+    "show_desktop_icons": True,
 }
 
 

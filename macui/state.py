@@ -143,6 +143,35 @@ def dnd_on():
     return dnd_mode() == "do-not-disturb"
 
 
+def power_mode():
+    """The power profile the machine is running in."""
+    out = run("powerprofilesctl get")
+    if "power-saver" in out:
+        return "power-saver"
+    if "performance" in out:
+        return "performance"
+    return "balanced"
+
+
+def battery_level():
+    """The battery charge in percent, or None."""
+    for name in ("BAT0", "BAT1"):
+        try:
+            with open(f"/sys/class/power_supply/{name}/capacity") as fh:
+                return int(fh.read().strip())
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def battery_charging():
+    try:
+        with open("/sys/class/power_supply/BAT0/status") as fh:
+            return "Charging" in fh.read()
+    except OSError:
+        return False
+
+
 def dnd_mode():
     """The focus mode mako is in."""
     out = run("makoctl mode")

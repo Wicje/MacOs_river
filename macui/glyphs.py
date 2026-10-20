@@ -304,3 +304,98 @@ def check(cr, x, y, size, color):
     cr.line_to(x + 12.5 * s, y + 4.6 * s)
     cr.stroke()
     cr.restore()
+
+
+def clipboard(cr, x, y, size, color):
+    """A clipboard with a paper on it."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.rectangle(x + 3 * s, y + 3 * s, 10 * s, 11 * s)
+    cr.fill()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.3 * s)
+    cr.rectangle(x + 4.5 * s, y + 5.5 * s, 7 * s, 8 * s)
+    cr.stroke()
+    cr.rectangle(x + 5.5 * s, y + 1.5 * s, 5 * s, 3 * s)
+    cr.fill()
+    cr.restore()
+
+
+def camera(cr, x, y, size, color):
+    """A camera, the way macOS draws the screenshot button."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.4 * s)
+    cr.rectangle(x + 1.5 * s, y + 4.5 * s, 13 * s, 8.5 * s)
+    cr.stroke()
+    cr.move_to(x + 5 * s, y + 4.5 * s)
+    cr.line_to(x + 6.5 * s, y + 2.5 * s)
+    cr.line_to(x + 9.5 * s, y + 2.5 * s)
+    cr.line_to(x + 11 * s, y + 4.5 * s)
+    cr.stroke()
+    cr.arc(x + 8 * s, y + 8.8 * s, 2.6 * s, 0, 2 * math.pi)
+    cr.fill()
+    cr.restore()
+
+
+def sun(cr, x, y, size, color):
+    """A sun, for the display settings."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.arc(x + 8 * s, y + 8 * s, 3.4 * s, 0, 2 * math.pi)
+    cr.fill()
+    cr.set_line_width(1.3 * s)
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    for index in range(8):
+        angle = index * math.pi / 4
+        cr.move_to(x + 8 * s + math.cos(angle) * 5.2 * s,
+                   y + 8 * s + math.sin(angle) * 5.2 * s)
+        cr.line_to(x + 8 * s + math.cos(angle) * 6.8 * s,
+                   y + 8 * s + math.sin(angle) * 6.8 * s)
+    cr.stroke()
+    cr.restore()
+
+
+def power(cr, x, y, size, color):
+    """The power symbol."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.6 * s)
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    cr.arc(x + 8 * s, y + 8.6 * s, 5.4 * s, math.radians(-60),
+           math.radians(240))
+    cr.stroke()
+    cr.move_to(x + 8 * s, y + 1.6 * s)
+    cr.line_to(x + 8 * s, y + 6.4 * s)
+    cr.stroke()
+    cr.restore()
+
+
+def lock(cr, x, y, size, color):
+    """A padlock."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.4 * s)
+    cr.arc(x + 8 * s, y + 6.6 * s, 3.4 * s, math.pi, 2 * math.pi)
+    cr.stroke()
+    cr.rectangle(x + 3.4 * s, y + 6.6 * s, 9.2 * s, 7 * s)
+    cr.fill()
+    cr.restore()
+
+
+def display_brightness(cr, x, y, size, color):
+    """A sun over a rectangle, the display brightness symbol."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.3 * s)
+    cr.rectangle(x + 1.5 * s, y + 8.5 * s, 13 * s, 6 * s)
+    cr.stroke()
+    cr.arc(x + 8 * s, y + 5 * s, 2.4 * s, 0, 2 * math.pi)
+    cr.fill()
+    cr.restore()

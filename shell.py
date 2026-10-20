@@ -39,6 +39,7 @@ from .panels.dock import Dock  # noqa: E402
 from .panels.dropdown import Dropdown  # noqa: E402
 from .panels.menubar import MenuBar  # noqa: E402
 from .panels.notch import Notch  # noqa: E402
+from .panels.desktopicons import DesktopIcons  # noqa: E402
 from .panels.spotlight import Spotlight  # noqa: E402
 from .panels.widgets import Widgets  # noqa: E402
 
@@ -82,6 +83,7 @@ class Shell:
         self.dock = Dock(self.metrics, self)
         self.control_centre = ControlCentre(self.metrics, self)
         self.widgets = Widgets(self.metrics, self)
+        self.desktop_icons = DesktopIcons(self.metrics, self)
         self.spotlight = Spotlight(self.metrics, self)
         self.launchpad = Launchpad(self.metrics, self)
         self.mission_control = MissionControl(self.metrics, self)
@@ -98,6 +100,7 @@ class Shell:
         self.force_quit = ForceQuit(self.metrics, self)
         self.windows = [
             self.menubar, self.notch, self.dock, self.widgets,
+            self.desktop_icons,
             self.control_centre, self.dropdown, self.spotlight,
             self.launchpad, self.mission_control, self.notification_centre,
             self.spaces, self.settings, self.about, self.force_quit,
@@ -121,6 +124,8 @@ class Shell:
         self.about.hide()
         self.force_quit.hide()
         self.widgets.set_visible(self.metrics.config.get("show_widgets", True))
+        self.desktop_icons.set_visible(
+            self.metrics.config.get("show_desktop_icons", True))
         self.dock.set_visible(self.metrics.config.get("show_dock", True))
         self.notch.set_visible(self.metrics.config.get("show_notch", True))
 
@@ -148,11 +153,15 @@ class Shell:
             os.mkfifo(CMD_FIFO, 0o600)
         except FileExistsError:
             pass
-        except OSError:
+        except OSError as exc:
+            print(f"macshell: cannot create the command fifo: {exc}",
+                  file=sys.stderr, flush=True)
             return
         try:
             fd = os.open(CMD_FIFO, os.O_RDWR | os.O_NONBLOCK)
-        except OSError:
+        except OSError as exc:
+            print(f"macshell: cannot open the command fifo: {exc}",
+                  file=sys.stderr, flush=True)
             return
         GLib.unix_fd_add_full(GLib.PRIORITY_DEFAULT, fd, GLib.IO_IN,
                                self._on_command, None)
@@ -202,6 +211,8 @@ class Shell:
             self.launchpad.toggle()
         elif command == "widgets":
             self.toggle_widgets()
+        elif command == "desktopicons":
+            self.toggle_desktop_icons()
         elif command == "windows":
             self.mission_control.toggle()
         elif command == "notifications":
@@ -211,6 +222,15 @@ class Shell:
         elif command.startswith("settings:"):
             self.settings.section = command.split(":", 1)[1]
             self.open_settings()
+        elif command == "clipboard":
+            self.open_clipboard()
+        elif command == "focus":
+            self.open_focus_menu()
+        elif command == "screenshot":
+            subprocess.Popen([f"{os.path.expanduser('~/.config/river/screenshot.sh')}",
+                              "region"], start_new_session=True,
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
         elif command == "dockmenu":
             from .panels import dock as dock_module
             if dock_module.APPS:
@@ -234,6 +254,7 @@ class Shell:
 
     def _refresh_state(self):
         self.widgets.refresh()
+        self.desktop_icons.refresh()
         self.notch.refresh()
         self.dock.refresh_running()
         self.spaces.refresh()
@@ -290,6 +311,39 @@ class Shell:
 
     def open_settings(self):
         self.settings.open()
+
+    def open_clipboard(self):
+        """The clipboard history, the way the notch shows it."""
+        rows = []
+        try:
+            out = subprocess.run(["cliphist", "list"], capture_output=True,
+                                 text=True, timeout=3).stdout
+        except (OSError, subprocess.SubprocessError):
+            out = ""
+        for line in out.splitlines()[:10]:
+            if "\t" not in line:
+                continue
+            _index, _, text = line.partition("\t")
+            text = text.strip()
+            if not text:
+                continue
+            label = text if len(text) < 60 else text[:57] + "..."
+            rows.append({
+                "glyph": "clipboard",
+                "label": label,
+                "detail": "",
+                "active": False,
+                "action": (lambda text=text: subprocess.Popen(
+                    ["wl-copy"], input=text.encode(),
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)),
+            })
+        if not rows:
+            rows.append({"glyph": "clipboard", "label": "The clipboard is empty",
+                         "detail": "", "active": False, "action": None})
+        menu = self.popups.get("clipboard")
+        if menu is None:
+            menu = self.popups["wifi"]
+        menu.show_items("Clipboard", rows, anchor_x=None)
 
     def open_focus_menu(self):
         """The focus modes, the way the Control Centre lists them."""
@@ -398,6 +452,8 @@ class Shell:
 
     def sync_widgets(self):
         self.widgets.set_visible(self.metrics.config.get("show_widgets", True))
+        self.desktop_icons.set_visible(
+            self.metrics.config.get("show_desktop_icons", True))
 
     def restart_wallpaper(self):
         subprocess.run(["systemctl", "--user", "restart",
@@ -456,6 +512,11 @@ class Shell:
         visible = not self.metrics.config.get("show_widgets", True)
         self._set_config("show_widgets", visible)
         self.widgets.set_visible(visible)
+
+    def toggle_desktop_icons(self):
+        visible = not self.metrics.config.get("show_desktop_icons", True)
+        self._set_config("show_desktop_icons", visible)
+        self.desktop_icons.set_visible(visible)
 
 
 def main():

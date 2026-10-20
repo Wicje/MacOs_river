@@ -13,7 +13,7 @@ gi.require_version("Gtk", "3.0")
 
 from gi.repository import GLib  # noqa: E402
 
-from ..macui import draw, glyphs, state  # noqa: E402
+from ..macui import actions, draw, glyphs, state  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 
@@ -39,6 +39,9 @@ class ControlCentre(Panel):
 
     def refresh(self):
         self._media = state.now_playing()
+        width = int(self.metrics.px("cc_width"))
+        height = self._layout(width)
+        self.set_content_size(width, int(height))
         self.redraw()
 
     # -- geometry ------------------------------------------------------------
@@ -137,9 +140,32 @@ class ControlCentre(Panel):
             })
         y += 4 * (small + gap) - gap + m.px("cc_section_gap")
 
+        # the power mode
+        y += m.px("cc_section_gap")
+        for index, mode in enumerate(("power-saver", "balanced",
+                                      "performance")):
+            width = (col_w - m.px("cc_button_gap") * 2) / 3
+            regions.append({
+                "kind": "power", "id": mode, "label": mode,
+                "x": right_x + index * (width + m.px("cc_button_gap")),
+                "y": y, "w": width, "h": 26,
+            })
+        y += 26
+
         regions.append({
             "kind": "exit", "x": right_x, "y": y, "w": col_w, "h": 26,
         })
+        y += 26 + m.px("cc_gap")
+
+        # lock and log out
+        for index, (uid, label) in enumerate((("lock", "Lock Screen"),
+                                              ("logout", "Log Out"))):
+            width = (col_w - m.px("cc_button_gap")) / 2
+            regions.append({
+                "kind": "session", "id": uid, "label": label,
+                "x": right_x + index * (width + m.px("cc_button_gap")),
+                "y": y, "w": width, "h": 26,
+            })
         y += 26
 
         right_bottom = y
@@ -167,6 +193,10 @@ class ControlCentre(Panel):
                 self._paint_slider(cr, region, pal)
             elif kind == "exit":
                 self._paint_exit(cr, region, pal)
+            elif kind == "power":
+                self._paint_power(cr, region, pal)
+            elif kind == "session":
+                self._paint_session(cr, region, pal)
             elif kind == "circle":
                 self._paint_circle(cr, region, pal)
             else:
@@ -278,6 +308,29 @@ class ControlCentre(Panel):
                        m.font("cc_font_size"), pal["text_dim"], align="center",
                        max_width=w - 8 * m.scale, ellipsize=True)
 
+    def _paint_power(self, cr, region, pal):
+        m = self.metrics
+        x, y, w, h = region["x"], region["y"], region["w"], region["h"]
+        current = state.power_mode()
+        active = current == region["id"]
+        draw.fill_squircle(cr, x, y, w, h, h / 2,
+                           pal["accent"] if active else pal["fill"],
+                           m.squareness)
+        color = pal["on_accent"] if active else pal["text"]
+        label = {"power-saver": "Eco", "balanced": "Balanced",
+                 "performance": "Pro"}.get(region["id"], region["id"])
+        draw.draw_text(cr, x + w / 2, y + h / 2, label,
+                       m.font("cc_font_size"), color, align="center",
+                       baseline="middle", max_width=w - 6, ellipsize=True)
+
+    def _paint_session(self, cr, region, pal):
+        m = self.metrics
+        x, y, w, h = region["x"], region["y"], region["w"], region["h"]
+        draw.fill_squircle(cr, x, y, w, h, h / 2, pal["fill"], m.squareness)
+        draw.draw_text(cr, x + w / 2, y + h / 2, region["label"],
+                       m.font("cc_font_size"), pal["text"], align="center",
+                       baseline="middle", max_width=w - 6, ellipsize=True)
+
     def _paint_exit(self, cr, region, pal):
         m = self.metrics
         x, y, w, h = region["x"], region["y"], region["w"], region["h"]
@@ -344,6 +397,13 @@ class ControlCentre(Panel):
                 self._activate(region["id"])
             elif kind == "slider":
                 self._set_slider(region, x)
+            elif kind == "power":
+                state.spawn(f"powerprofilesctl set {region['id']}")
+            elif kind == "session":
+                if region["id"] == "lock":
+                    actions.lock_session()
+                else:
+                    actions.log_out()
             elif kind == "exit":
                 self.hide()
             return True

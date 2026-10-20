@@ -9,6 +9,7 @@
     "accent": "yellow",
     "reduce_transparency": false,
     "wallpaper_rotate": true,
+    "show_desktop_icons": false,
     "mute": true,
     "dnd": true
 }
