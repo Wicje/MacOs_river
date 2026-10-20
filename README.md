@@ -29,6 +29,38 @@ any wlroots compositor.
 | Hide the Notch | `Super+Shift+Q` | only hides |
 | Hide the widgets | `Super+Shift+G` | only hides |
 | Spaces | top right corner | the dots switch between the nine tags |
+| Tile the window | `Control+Alt+←/→` | the left or the right half, macOS Sequoia style |
+| Tile a quarter | `Control+Alt+1…4` | the four quarters of the screen |
+
+## Install
+
+On a fresh machine the setup script installs the tools and the
+applications the shell likes, and then the shell itself:
+```sh
+git clone <this repository> ~/.config/macshell
+cd ~/.config/macshell
+./setup.sh
+```
+
+`./setup.sh --check` only reports what is missing, `./setup.sh --deps`
+installs only the tools and the applications (Ghostty, Yazi, mpv, VLC,
+Dolphin, GIMP, Spotify and Steam, among others) and `./setup.sh --no-deps`
+installs the shell without touching anything else.
+
+The script is safe to run again and keeps a copy of the river
+configuration it replaces.
+
+To install the shell alone:
+
+```sh
+git clone <this repository> ~/.config/macshell
+cd ~/.config/macshell
+./install.sh
+```
+
+`install.sh` copies the river scripts into `~/.config/river`, installs the
+systemd user units, builds the small helper that lists the compositor's
+windows and enables both services.
 
 ## The dock and the notch
 
@@ -81,6 +113,13 @@ cd ~/.config/macshell
 `install.sh` copies the river scripts into `~/.config/river`, installs the
 systemd user units, builds the small helper that lists the compositor's
 windows and enables both services.
+
+## The widgets
+
+The column under the menu bar carries the calendar, the clock, the system
+gauges and **Screen Time**: the shell counts how long every application
+was in the foreground today, the way macOS Tahoe does, and keeps it in
+`~/.local/state/macshell/screentime.json`.
 
 ## Requirements
 

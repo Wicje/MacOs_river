@@ -42,6 +42,16 @@ riverctl map normal Super+Shift T spawn "$HOME/.config/river/macshell-cmd.sh doc
 riverctl map normal Super+Shift Q spawn "$HOME/.config/river/macshell-cmd.sh notch"
 riverctl map normal Super+Shift G spawn "$HOME/.config/river/macshell-cmd.sh widgets"
 
+# Native window tiling, the way macOS Sequoia snaps a window to an edge
+riverctl map normal Control+Alt Left spawn "$HOME/.config/river/macshell-cmd.sh tile:left"
+riverctl map normal Control+Alt Right spawn "$HOME/.config/river/macshell-cmd.sh tile:right"
+riverctl map normal Control+Alt Up spawn "$HOME/.config/river/macshell-cmd.sh tile:top"
+riverctl map normal Control+Alt Down spawn "$HOME/.config/river/macshell-cmd.sh tile:bottom"
+riverctl map normal Control+Alt 1 spawn "$HOME/.config/river/macshell-cmd.sh tile:top-left"
+riverctl map normal Control+Alt 2 spawn "$HOME/.config/river/macshell-cmd.sh tile:top-right"
+riverctl map normal Control+Alt 3 spawn "$HOME/.config/river/macshell-cmd.sh tile:bottom-left"
+riverctl map normal Control+Alt 4 spawn "$HOME/.config/river/macshell-cmd.sh tile:bottom-right"
+
 # Stage Manager, the assistant and the screenshot toolbar
 riverctl map normal Super G spawn "$HOME/.config/river/macshell-cmd.sh stage"
 riverctl map normal Super+Shift K spawn "$HOME/.config/river/macshell-cmd.sh ask"

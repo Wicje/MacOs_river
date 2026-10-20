@@ -409,19 +409,19 @@ def sparkles(cr, x, y, size, color):
 
     def star(cx, cy, r):
         cr.move_to(cx, cy - r)
-        cr.curve_to(cx + r * 0.16, cy - r * 0.16, cx + r * 0.16, cy - r * 0.16,
+        cr.curve_to(cx + r * 0.06, cy - r * 0.20, cx + r * 0.20, cy - r * 0.06,
                     cx + r, cy)
-        cr.curve_to(cx + r * 0.16, cy + r * 0.16, cx + r * 0.16, cy + r * 0.16,
+        cr.curve_to(cx + r * 0.20, cy + r * 0.06, cx + r * 0.06, cy + r * 0.20,
                     cx, cy + r)
-        cr.curve_to(cx - r * 0.16, cy + r * 0.16, cx - r * 0.16, cy + r * 0.16,
+        cr.curve_to(cx - r * 0.06, cy + r * 0.20, cx - r * 0.20, cy + r * 0.06,
                     cx - r, cy)
-        cr.curve_to(cx - r * 0.16, cy - r * 0.16, cx - r * 0.16, cy - r * 0.16,
+        cr.curve_to(cx - r * 0.20, cy - r * 0.06, cx - r * 0.06, cy - r * 0.20,
                     cx, cy - r)
         cr.close_path()
 
-    star(x + 5.6 * s, y + 5.6 * s, 4.6 * s)
+    star(x + 5.4 * s, y + 5.4 * s, 5.0 * s)
     cr.fill()
-    star(x + 12.0 * s, y + 11.4 * s, 2.4 * s)
+    star(x + 12.2 * s, y + 11.6 * s, 2.8 * s)
     cr.fill()
     cr.restore()
 

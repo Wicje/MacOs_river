@@ -129,28 +129,58 @@ def move_to_output(direction):
              f"{direction}")
 
 
-def tile_window(direction):
-    """Tile the focused window to the left or right half of the screen.
-
-    River Classic can snap a floating view to a screen edge and resize it,
-    which together make a macOS style half screen tile.
-    """
-    if is_sway():
-        _run(f"swaymsg move position 0 0")
-        return
-    width = 1366
+def _screen_size():
+    """The size of the output the shell draws on."""
+    width, height = 1366, 768
     try:
         out = subprocess.run(["wlr-randr"], capture_output=True, text=True,
                              timeout=3).stdout
+        current = False
         for line in out.splitlines():
-            if "current)" in line:
-                width = int(line.strip().split()[0].split("x")[0])
+            line = line.strip()
+            if line.startswith("Current mode:"):
+                current = True
+                continue
+            if current and "px" in line:
+                parts = line.split()
+                width = int(parts[0].split("x")[0])
+                height = int(parts[2].split("x")[0])
                 break
     except (OSError, ValueError, IndexError, subprocess.SubprocessError):
         pass
-    half = width // 2
-    _run(f"riverctl snap {direction}")
-    _run(f"riverctl resize horizontal -{half}")
+    return width, height
+
+
+def tile_window(zone="left"):
+    """Tile the focused window the way macOS Sequoia does.
+
+    The zones are left, right, top, bottom and the four corners:
+
+        tile:left        the left half
+        tile:top-right   the quarter in the top right corner
+    """
+    if is_sway():
+        _run("swaymsg move position 0 0")
+        return
+    width, height = _screen_size()
+    half_w, half_w_gap = width // 2, 0
+    half_h = height // 2
+
+    edges = []
+    if "left" in zone:
+        edges.append("left")
+    if "right" in zone:
+        edges.append("right")
+    if "top" in zone:
+        edges.append("top")
+    if "bottom" in zone:
+        edges.append("bottom")
+    for edge in edges:
+        _run(f"riverctl snap {edge}")
+    if "left" in zone or "right" in zone:
+        _run(f"riverctl resize horizontal -{half_w}")
+    if "top" in zone or "bottom" in zone:
+        _run(f"riverctl resize vertical -{half_h}")
 
 
 def zoom_window():

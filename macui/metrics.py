@@ -65,6 +65,7 @@ BASE = {
     "widget_radius": 20,
     "widget_pad": 10,
     "widget_gap": 10,
+    "widget_screen_h": 96,
     # notch
     "notch_width": 520,
     "notch_height": 64,

@@ -15,10 +15,12 @@ import time
 import gi
 
 gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
 
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
 
-from ..macui import draw, glyphs, state  # noqa: E402
+from ..macui import apps, draw, glyphs, state  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 DEFAULT_APPS = [
@@ -27,7 +29,9 @@ DEFAULT_APPS = [
     {"id": "firefox", "label": "Firefox", "cmd": "firefox", "app": "firefox"},
     {"id": "chromium", "label": "Chromium", "cmd": "chromium", "app": "chromium"},
     {"id": "dolphin", "label": "Files", "cmd": "dolphin", "app": "dolphin"},
+    {"id": "yazi", "label": "Yazi", "cmd": "yazi", "app": "yazi"},
     {"id": "terminal", "label": "Terminal", "cmd": "foot", "app": "foot"},
+    {"id": "ghostty", "label": "Ghostty", "cmd": "ghostty", "app": "ghostty"},
     {"id": "vscode", "label": "Visual Studio Code", "cmd": "code", "app": "code"},
     {"id": "gimp", "label": "GIMP", "cmd": "gimp", "app": "gimp"},
     {"id": "mpv", "label": "mpv", "cmd": "mpv", "app": "mpv"},
@@ -94,6 +98,7 @@ class Dock(Panel):
         self._animating = False
         self._bounce = -1
         self._bounce_started = 0.0
+        self._icons: dict = {}
 
         width = self.panel_width()
         self.set_content_size(width, self.panel_height())
@@ -329,7 +334,7 @@ class Dock(Panel):
                 glyphs.grid(cr, x + size * 0.24, y + size * 0.24,
                             size * 0.52, pal["text"])
             else:
-                draw.draw_icon(cr, app["id"], x, y, size)
+                self._paint_icon(cr, app, x, y, size, pal)
 
             # running indicator
             if index < len(APPS) and self._is_running(app):
@@ -347,6 +352,48 @@ class Dock(Panel):
 
         if self.hover >= 0 and self.hover < len(layout):
             self._paint_tooltip(cr, layout[self.hover])
+
+    def _paint_icon(self, cr, app, x, y, size, pal):
+        """The icon of an application.
+
+        The shell ships a few icons, but anything else takes the icon the
+        system has for the application, so a new program in the dock
+        looks right straight away.
+        """
+        if draw.draw_icon(cr, app["id"], x, y, size):
+            return
+        pixbuf = self._system_icon(app.get("app") or app["id"])
+        if pixbuf is None:
+            draw.fill_squircle(cr, x + size * 0.18, y + size * 0.1,
+                               size * 0.64, size * 0.7, size * 0.1,
+                               pal["fill_hover"], self.metrics.squareness)
+            glyphs.grid(cr, x + size * 0.3, y + size * 0.2, size * 0.4,
+                        pal["text_dim"])
+            return
+        iw, ih = pixbuf.get_width(), pixbuf.get_height()
+        factor = size / max(iw, ih)
+        cr.save()
+        cr.translate(x + (size - iw * factor) / 2, y + (size - ih * factor) / 2)
+        cr.scale(factor, factor)
+        Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0)
+        cr.paint()
+        cr.restore()
+
+    def _system_icon(self, name):
+        """The icon the desktop has for an application."""
+        if not name:
+            return None
+        if name in self._icons:
+            return self._icons[name]
+        pixbuf = None
+        path = apps.icon_path(name)
+        if path:
+            try:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
+            except Exception:  # noqa: BLE001
+                pixbuf = None
+        self._icons[name] = pixbuf
+        return pixbuf
 
     def _paint_tooltip(self, cr, item):
         m = self.metrics

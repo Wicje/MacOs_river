@@ -12,6 +12,8 @@
     "show_desktop_icons": false,
     "dock_mode": "auto",
     "notch_mode": "auto",
+    "glass_opacity": 1.0,
+    "glass_tint": 0.0,
     "mute": true,
     "dnd": true
 }

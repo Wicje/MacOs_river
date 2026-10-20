@@ -244,6 +244,8 @@ class Shell:
             self.switcher.toggle()
         elif command == "stage":
             self.stage_manager.toggle()
+        elif command.startswith("tile:"):
+            actions.tile_window(command.split(":", 1)[1])
         elif command == "ask":
             self.assistant.open("ask")
         elif command == "write":

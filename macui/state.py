@@ -24,6 +24,7 @@ _cache = {
     "window": "",
     "running": set(),
     "toplevels": [],
+    "screentime": None,
 }
 _cache_lock = threading.Lock()
 
@@ -401,12 +402,72 @@ def _refresh_once():
         if entry.get("activated") and not app_id:
             app_id = entry.get("app_id") or ""
             title = entry.get("title") or ""
+    _track_screen_time(app_id)
     with _cache_lock:
         _cache["media"] = media
         _cache["app_id"] = app_id
         _cache["window"] = title
         _cache["running"] = running
         _cache["toplevels"] = entries
+
+
+# --- screen time ------------------------------------------------------------
+#
+# macOS shows how long every application was in the foreground.  The shell
+# knows the same thing: the helper reports the focused window, so the time
+# is counted here and kept for the day.
+
+SCREEN_TIME_FILE = os.path.expanduser("~/.local/state/macshell/screentime.json")
+_screen_time = {}
+
+
+def _track_screen_time(app_id):
+    """Count the time an application was in the foreground."""
+    key = (app_id or "").lower()
+    if not key:
+        return
+    today = time.strftime("%Y-%m-%d")
+    try:
+        with _cache_lock:
+            data = dict(_cache.get("screentime") or {})
+    except Exception:  # noqa: BLE001
+        data = {}
+    if data.get("day") != today:
+        data = {"day": today, "apps": {}}
+    apps = data.setdefault("apps", {})
+    apps[key] = apps.get(key, 0) + 1
+    with _cache_lock:
+        _cache["screentime"] = data
+    _screen_time[key] = True
+    # the file is written now and then, not every second
+    if sum(apps.values()) % 30 < 1:
+        try:
+            os.makedirs(os.path.dirname(SCREEN_TIME_FILE), exist_ok=True)
+            with open(SCREEN_TIME_FILE, "w") as fh:
+                json.dump(data, fh, indent=2)
+        except OSError:
+            pass
+
+
+def screen_time():
+    """The minutes every application was in the foreground today."""
+    today = time.strftime("%Y-%m-%d")
+    data = {}
+    try:
+        with open(SCREEN_TIME_FILE) as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        data = {}
+    if data.get("day") != today:
+        data = {"day": today, "apps": {}}
+    with _cache_lock:
+        data = dict(_cache.get("screentime") or data)
+    if data.get("day") != today:
+        return []
+    apps = data.get("apps") or {}
+    rows = [(name, round(seconds / 60.0)) for name, seconds in apps.items()]
+    rows.sort(key=lambda row: row[1], reverse=True)
+    return rows[:5]
 
 
 def _refresh_loop():

@@ -84,11 +84,13 @@ class Widgets(Panel):
             "mem": _mem_percent(),
             "disk": _disk_percent(),
         }
+        self._screen_time = state.screen_time()
         self.redraw()
 
     def content_height(self):
         m = self.metrics
-        return int(m.px("widget_size") * 2 + m.px("widget_gap"))
+        return int(m.px("widget_size") * 2 + m.px("widget_gap")
+                   + m.px("widget_screen_h"))
 
     # -- painting ------------------------------------------------------------
 
@@ -109,6 +111,42 @@ class Widgets(Panel):
         wide_y = size + gap
         self._tile(cr, 0, wide_y, width, size, radius, pal)
         self._paint_gauges(cr, 0, wide_y, width, size, pal)
+
+        # the screen time, the widget macOS Tahoe added
+        time_y = wide_y + size + gap
+        time_h = m.px("widget_screen_h")
+        self._tile(cr, 0, time_y, width, time_h, radius, pal)
+        self._paint_screen_time(cr, 0, time_y, width, time_h, pal)
+
+    def _paint_screen_time(self, cr, x, y, w, h, pal):
+        """How long every application was in the foreground today."""
+        m = self.metrics
+        rows = getattr(self, "_screen_time", [])[:3]
+        draw.draw_text(cr, x + 12 * m.scale, y + 16 * m.scale, "Screen Time",
+                       9 * m.scale, pal["text_faint"], weight="bold",
+                       baseline="middle")
+        if not rows:
+            draw.draw_text(cr, x + 12 * m.scale, y + h * 0.58,
+                           "Nothing to show yet", 9 * m.scale, pal["text_faint"],
+                           baseline="middle")
+            return
+        biggest = max(minutes for _name, minutes in rows) or 1
+        row_y = y + 32 * m.scale
+        for name, minutes in rows:
+            label = name if len(name) < 18 else name[:17] + "…"
+            draw.draw_text(cr, x + 12 * m.scale, row_y, label, 9 * m.scale,
+                           pal["text_dim"], baseline="middle")
+            bar_x = x + 100 * m.scale
+            bar_w = w - 150 * m.scale
+            draw.fill_squircle(cr, bar_x, row_y - 3 * m.scale, bar_w,
+                               6 * m.scale, 3 * m.scale, pal["fill_hover"], 2.0)
+            draw.fill_squircle(cr, bar_x, row_y - 3 * m.scale,
+                               max(6 * m.scale, bar_w * minutes / biggest),
+                               6 * m.scale, 3 * m.scale, pal["accent"], 2.0)
+            draw.draw_text(cr, x + w - 12 * m.scale, row_y,
+                           f"{minutes}m", 9 * m.scale, pal["text_dim"],
+                           align="right", baseline="middle")
+            row_y += 22 * m.scale
 
     def _tile(self, cr, x, y, w, h, radius, pal):
         draw.glass_panel(cr, x, y, w, h, radius, pal,
