@@ -140,7 +140,21 @@ def set_brightness(value):
 # --- focus / do not disturb ------------------------------------------------
 
 def dnd_on():
-    return "do-not-disturb" in run("makoctl mode")
+    return dnd_mode() == "do-not-disturb"
+
+
+def dnd_mode():
+    """The focus mode mako is in."""
+    out = run("makoctl mode")
+    for mode in ("do-not-disturb", "work", "personal", "sleep"):
+        if mode in out:
+            return mode
+    return "off"
+
+
+def set_dnd_mode(mode):
+    """Switch to a focus mode."""
+    spawn(f"makoctl mode -t {mode}")
 
 
 def toggle_dnd():

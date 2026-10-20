@@ -291,6 +291,36 @@ class Shell:
     def open_settings(self):
         self.settings.open()
 
+    def open_focus_menu(self):
+        """The focus modes, the way the Control Centre lists them."""
+        modes = [
+            ("Off", "off", False),
+            ("Do Not Disturb", "do-not-disturb", False),
+            ("Work", "work", False),
+            ("Personal", "personal", False),
+            ("Sleep", "sleep", False),
+        ]
+        current = state.dnd_mode()
+        rows = []
+        for label, mode, _ in modes:
+            rows.append({
+                "glyph": "moon" if mode != "off" else "check",
+                "label": label,
+                "detail": "on" if current == mode else "",
+                "active": current == mode,
+                "action": (lambda mode=mode: state.set_dnd_mode(mode)),
+            })
+        rows.append({
+            "glyph": "moon", "label": "Night Shift", "detail": "",
+            "active": False,
+            "action": lambda: state.spawn(
+                f"{os.path.expanduser('~/.config/river/nightlight.py')}"),
+        })
+        menu = self.popups.get("focus")
+        if menu is None:
+            menu = self.popups["wifi"]
+        menu.show_items("Focus", rows)
+
     def open_popup(self, kind, anchor_x=None):
         for popup in self.popups.values():
             popup.close()
