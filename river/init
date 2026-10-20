@@ -1,0 +1,135 @@
+#!/bin/sh
+# === PORTAL & ENVIRONMENT FIX ===
+# This tells background services (like file pickers) how to find your Wayland session
+export XDG_CURRENT_DESKTOP=river
+export XDG_SESSION_TYPE=wayland
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE
+# ================================
+
+# Apply the persisted light/dark palette before any UI process starts.
+"$HOME/.config/river/theme-apply.sh" || true
+# Default terminal
+set term foot
+
+# =============================================================================
+# WORKSPACES (TAGS) SETUP
+# River uses binary bitmasks for tags instead of named workspaces.
+# This loop maps Super + [1-9] to switch workspaces and Super + Shift + [1-9] to move windows.
+# =============================================================================
+for i in $(seq 1 9); do
+    tags=$((1 << (i - 1)))
+    riverctl map normal Super "$i" set-focused-tags $tags
+    riverctl map normal Super+Shift "$i" set-view-tags $tags
+done
+
+# =============================================================================
+# KEYBINDINGS
+# =============================================================================
+
+# Apps
+riverctl map normal Super Return spawn foot
+riverctl map normal Mod4 B spawn firefox
+riverctl map normal Mod4 E spawn dolphin
+riverctl map normal Super D spawn "$HOME/.config/river/macshell-cmd.sh launchpad"
+riverctl map normal Super Tab spawn "$HOME/.config/river/macshell-cmd.sh windows"
+
+# macOS shell: control centre, spotlight and the Apple menu
+riverctl map normal Super C spawn "$HOME/.config/river/macshell-cmd.sh cc"
+riverctl map normal Super Space spawn "$HOME/.config/river/macshell-cmd.sh spotlight"
+riverctl map normal Super+Shift A spawn "$HOME/.config/river/macshell-cmd.sh apple"
+riverctl map normal Super+Shift T spawn "$HOME/.config/river/macshell-cmd.sh dock"
+riverctl map normal Super+Shift Q spawn "$HOME/.config/river/macshell-cmd.sh notch"
+riverctl map normal Super+Shift G spawn "$HOME/.config/river/macshell-cmd.sh widgets"
+
+# Clipboard
+wl-paste --type text --watch cliphist store &
+wl-paste --type image --watch cliphist store &
+riverctl map normal Super V spawn "$HOME/.config/river/clipboard.sh"
+riverctl map normal Super period spawn "$HOME/.config/river/emoji.py"
+riverctl map normal Super+Shift W spawn "$HOME/.config/river/netmenu.py"
+riverctl map normal Super+Shift B spawn "$HOME/.config/river/btmenu.py"
+riverctl map normal Super+Shift D spawn "$HOME/.config/river/themed.sh toggle"
+riverctl map normal Super+Shift N spawn "python3 $HOME/.config/river/nightlight.py"
+riverctl map normal Super+Shift P spawn "$HOME/.config/river/wallpaper-pick.sh"
+
+# Focus windows
+riverctl map normal Super H focus-view left
+riverctl map normal Super L focus-view right
+riverctl map normal Mod4 J focus-view down
+riverctl map normal Mod4 K focus-view up
+
+# Move windows
+riverctl map normal Mod4+Shift H move left
+riverctl map normal Mod4+Shift J move down
+riverctl map normal Mod4+Shift K move up
+riverctl map normal Mod4+Shift L move right
+
+# Resize windows
+riverctl map normal Mod4+Control H resize horizontal -50
+riverctl map normal Mod4+Control L resize horizontal 50
+riverctl map normal Mod4+Control J resize vertical 50
+riverctl map normal Mod4+Control K resize vertical -50
+
+# Screenshot (glass preview with Copy/Save/Open)
+riverctl map normal Alt S spawn "$HOME/.config/river/screenshot.sh region"
+riverctl map normal Print spawn "$HOME/.config/river/screenshot.sh full"
+
+# SCREEN RECORDING (Prompt for name)
+# This will pop up wofi asking for a file name before starting the recording!
+riverctl map normal Super+Shift R spawn 'name=$(wofi --dmenu -p "Enter video name" < /dev/null) && [ -n "$name" ] && gpu-screen-recorder -w screen -f 60 -c mp4 -o "$HOME/Videos/$name.mp4"'
+riverctl map normal Super+Shift S spawn "pkill gpu-screen-recorder"
+
+# Window management
+# Maximize = fullscreen (also hides the dock); minimize = hidden tag 32.
+riverctl map normal Super F spawn "$HOME/.config/river/win-max.sh"
+riverctl map normal Super M spawn "$HOME/.config/river/win-min.sh"
+riverctl map normal Super+Shift M spawn "$HOME/.config/river/win-show-min.sh"
+riverctl map normal Super+Shift F toggle-float
+riverctl map normal Super Q spawn "$HOME/.config/river/win-close.sh"
+riverctl map normal Super+Shift E exit
+
+# Mouse: Super+drag moves, Super+right-drag resizes (floating views).
+riverctl map-pointer normal Super BTN_LEFT move-view
+riverctl map-pointer normal Super BTN_RIGHT resize-view
+
+# =============================================================================
+# AUTOSTARTS & SYSTEM CONFIGS
+# =============================================================================
+
+# Wallpaper (pixel-perfect 1366x768 image on the background layer).
+# Uses our GTK-layer-shell helper; regenerate the image with make-wallpaper.py.
+[ -f "$HOME/Pictures/wall/tahoe-purple.png" ] || python3 "$HOME/.config/river/make-wallpaper.py"
+riverctl spawn "python3 $HOME/.config/river/wallpaper.py"
+riverctl spawn "foot --server"
+
+# Set display for current laptop
+riverctl spawn "wlr-randr --output LVDS-1 --mode 1366x768"
+
+# Borders
+riverctl border-color-focused 0x1e90ff
+riverctl border-color-unfocused 0x202020
+riverctl border-width 1
+
+# Keyboard repeat rate
+riverctl keyboard-layout -options "caps:escape" us
+riverctl set-repeat 50 300
+
+# Touchpad & Mouse
+riverctl input pointer-2-7-SynPS/2_Synaptics_TouchPad tap enabled
+riverctl focus-follows-cursor normal
+
+# NOTE: the macOS Tahoe shell (menu bar, dock, control centre, widgets) is
+# provided by the macshell systemd user service, which replaces waybar and
+# the old dock.py / controlcenter.py.
+
+# Notifications (glass overlay under the notch)
+riverctl spawn "mako"
+
+# Window rules
+riverctl float-filter-add app-id float
+riverctl float-filter-add title "popup title with spaces"
+riverctl csd-filter-add app-id "gedit"
+
+# Default layout
+riverctl default-layout rivertile
+rivertile -view-padding 2 -outer-padding 2 &

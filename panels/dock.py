@@ -1,0 +1,387 @@
+"""The Tahoe dock.
+
+A floating glass shelf of app icons that magnifies under the pointer the way
+macOS does: neighbouring icons ease apart and grow, running apps carry a
+small indicator dot and the hovered app shows a label bubble.
+"""
+
+from __future__ import annotations
+
+import math
+import time
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+
+from gi.repository import GLib, Gtk  # noqa: E402
+
+from ..macui import draw, glyphs, state  # noqa: E402
+from ..macui.panel import Panel  # noqa: E402
+
+APPS = [
+    {"id": "launchpad", "label": "Launchpad", "cmd": "", "special": "launchpad",
+     "glyph": "grid", "app": ""},
+    {"id": "firefox", "label": "Firefox", "cmd": "firefox", "app": "firefox"},
+    {"id": "chromium", "label": "Chromium", "cmd": "chromium", "app": "chromium"},
+    {"id": "dolphin", "label": "Files", "cmd": "dolphin", "app": "dolphin"},
+    {"id": "terminal", "label": "Terminal", "cmd": "foot", "app": "foot"},
+    {"id": "vscode", "label": "Visual Studio Code", "cmd": "code", "app": "code"},
+    {"id": "gimp", "label": "GIMP", "cmd": "gimp", "app": "gimp"},
+    {"id": "mpv", "label": "mpv", "cmd": "mpv", "app": "mpv"},
+    {"id": "vlc", "label": "VLC", "cmd": "vlc", "app": "vlc"},
+    {"id": "audacity", "label": "Audacity", "cmd": "audacity", "app": "audacity"},
+    {"id": "obs", "label": "OBS Studio", "cmd": "obs", "app": "obs"},
+    {"id": "spotify", "label": "Spotify", "cmd": "spotify", "app": "spotify"},
+    {"id": "steam", "label": "Steam", "cmd": "steam", "app": "steam"},
+]
+
+TRASH = {"id": "trash", "label": "Trash", "cmd": "dolphin trash:///"}
+
+TOOLTIP_SPACE = 30
+
+
+class Dock(Panel):
+    NAMESPACE = "mac-dock"
+
+    def __init__(self, metrics, shell):
+        super().__init__(
+            metrics,
+            layer="top",
+            anchors={"bottom": True},
+            exclusive=0,
+        )
+        self.shell = shell
+        self.hover = -1
+        self._layout: list = []
+        self._shelf = (0, 0, 0, 0)
+        self._sizes = [metrics.px("dock_icon")] * (len(APPS) + 1)
+        self._targets = list(self._sizes)
+        self._animating = False
+        self._bounce = -1
+        self._bounce_started = 0.0
+
+        width = self.panel_width()
+        self.set_content_size(width, self.panel_height())
+        screen = metrics.width or width
+        self.set_horizontal_offset(int((screen - width) / 2))
+        self._running = self._detect_running()
+
+    # -- running apps --------------------------------------------------------
+
+    def _detect_running(self):
+        """App ids of the windows that are currently open."""
+        try:
+            return state.running_app_ids()
+        except Exception:
+            return set()
+
+    def refresh_running(self):
+        self._running = self._detect_running()
+        self.redraw()
+
+    # -- geometry ------------------------------------------------------------
+
+    def panel_height(self):
+        m = self.metrics
+        shelf_h = m.px("dock_icon") + m.px("dock_pad_y") * 2
+        return int(m.px("dock_margin_bottom") + shelf_h
+                   + (m.px("dock_icon_max") - m.px("dock_icon")) + TOOLTIP_SPACE)
+
+    def panel_width(self):
+        """Width of the dock surface.
+
+        The surface is only as wide as the shelf (plus room for the icons
+        to grow), so clicks outside the dock still reach the windows
+        underneath.
+        """
+        m = self.metrics
+        base = m.px("dock_icon")
+        gap = m.px("dock_gap")
+        pad = m.px("dock_pad_x")
+        count = len(APPS) + 1
+        resting = base * count + gap * (count - 1)
+        return int(resting + pad * 2 + m.px("dock_icon_max") * 0.6)
+
+    def shelf_height(self):
+        m = self.metrics
+        return m.px("dock_icon") + m.px("dock_pad_y") * 2
+
+    def _compute_layout(self):
+        """Icon geometry for the current pointer position.
+
+        The icon sizes are eased towards their targets by _step(), so this
+        only works out where the icons sit and how big they want to be.
+        """
+        m = self.metrics
+        base = m.px("dock_icon")
+        gap = m.px("dock_gap")
+        pad_x = m.px("dock_pad_x")
+
+        width, height = self.content_size()
+        if width <= 0:
+            width = m.width or 1366
+
+        sizes = self._sizes
+
+        # centres follow from the sizes, so bigger icons push their
+        # neighbours aside exactly like macOS does
+        centres = []
+        x = 0.0
+        for size in sizes:
+            centres.append(x + size / 2)
+            x += size + gap
+
+        total = centres[-1] + sizes[-1] / 2 if centres else 0
+        shelf_w = total + pad_x * 2
+        shelf_x = (width - shelf_w) / 2
+
+        shelf_h = self.shelf_height()
+        shelf_y = height - m.px("dock_margin_bottom") - shelf_h
+        icon_bottom = shelf_y + shelf_h - m.px("dock_pad_y")
+
+        layout = []
+        for index, size in enumerate(sizes):
+            layout.append({
+                "index": index,
+                "x": shelf_x + pad_x + centres[index] - size / 2,
+                "size": size,
+                "centre": shelf_x + pad_x + centres[index],
+                "bottom": icon_bottom,
+            })
+        self._layout = layout
+        self._shelf = (shelf_x, shelf_y, shelf_w, shelf_h)
+        return layout
+
+    # -- magnification -------------------------------------------------------
+
+    def _magnified(self, pointer_x):
+        """Target icon sizes for a pointer position.
+
+        The pointer is measured against the resting dock, so the icons that
+        grow also move the ones next to them -- that is what gives macOS
+        its elastic feel.
+        """
+        m = self.metrics
+        base = m.px("dock_icon")
+        top = m.px("dock_icon_max")
+        gap = m.px("dock_gap")
+        pad_x = m.px("dock_pad_x")
+        count = len(APPS) + 1
+
+        width, _ = self.content_size()
+        if width <= 0:
+            width = m.width or 1366
+
+        # resting geometry
+        centres = []
+        x = 0.0
+        for _ in range(count):
+            centres.append(x + base / 2)
+            x += base + gap
+        shelf_w = centres[-1] + base / 2 + pad_x * 2
+        shelf_x = (width - shelf_w) / 2
+
+        # the pointer in the dock's own coordinate space
+        local = pointer_x - (shelf_x + pad_x)
+
+        targets = [base] * count
+        for _ in range(2):
+            sizes = []
+            for index in range(count):
+                dist = abs(local - centres[index])
+                span = base * 2.2
+                if dist < span:
+                    t = 1.0 - dist / span
+                    eased = t * t * (3 - 2 * t)
+                    sizes.append(base + (top - base) * eased)
+                else:
+                    sizes.append(base)
+            centres = []
+            x = 0.0
+            for size in sizes:
+                centres.append(x + size / 2)
+                x += size + gap
+            targets = sizes
+        return targets
+
+    def _update_targets(self):
+        m = self.metrics
+        pointer_x = self.pointer[0]
+        if pointer_x < 0:
+            targets = [m.px("dock_icon")] * (len(APPS) + 1)
+        else:
+            targets = self._magnified(pointer_x)
+        if targets != self._targets:
+            self._targets = targets
+            self._animate()
+
+    def _animate(self):
+        if self._animating:
+            return
+        self._animating = True
+        GLib.timeout_add(16, self._step)
+
+    def _step(self):
+        moved = False
+        for index, target in enumerate(self._targets):
+            current = self._sizes[index]
+            if abs(current - target) < 0.4:
+                self._sizes[index] = target
+            else:
+                self._sizes[index] = current + (target - current) * 0.35
+                moved = True
+
+        # the launch bounce of an icon that was just started
+        if self._bounce >= 0:
+            elapsed = time.monotonic() - self._bounce_started
+            if elapsed > 1.1:
+                self._bounce = -1
+            else:
+                moved = True
+
+        self.redraw()
+        if not moved:
+            self._animating = False
+            return False
+        return True
+
+    def _bounce_offset(self, index):
+        """How far the bouncing icon is lifted right now."""
+        if self._bounce != index:
+            return 0.0
+        elapsed = time.monotonic() - self._bounce_started
+        if elapsed > 1.1:
+            return 0.0
+        return abs(math.sin(elapsed * math.pi * 3.2)) * 9 * self.metrics.scale
+
+    # -- painting ------------------------------------------------------------
+
+    def paint(self, cr, width, height):
+        m = self.metrics
+        pal = m.palette()
+
+        layout = self._compute_layout()
+        if not layout:
+            return
+
+        shelf_x, shelf_y, shelf_w, shelf_h = self._shelf
+
+        draw.glass_panel(
+            cr, shelf_x, shelf_y, shelf_w, shelf_h, m.px("dock_radius"), pal,
+            exponent=m.squareness, shadow=True, shadow_spread=16,
+        )
+
+        for item in layout:
+            index = item["index"]
+            size = item["size"]
+            x = item["x"]
+            y = item["bottom"] - size - self._bounce_offset(index)
+            app = APPS[index] if index < len(APPS) else TRASH
+
+            if app.get("glyph") == "grid":
+                draw.fill_squircle(cr, x, y, size, size, size * 0.22,
+                                   pal["fill_hover"], m.squareness)
+                glyphs.grid(cr, x + size * 0.24, y + size * 0.24,
+                            size * 0.52, pal["text"])
+            else:
+                draw.draw_icon(cr, app["id"], x, y, size)
+
+            # running indicator
+            if index < len(APPS) and self._is_running(app):
+                r = m.px("dock_running_dot") / 2
+                draw.fill_squircle(
+                    cr, item["centre"] - r, item["bottom"] + m.px("dock_running_gap"),
+                    r * 2, r * 2, r, pal["text_dim"], 2.0,
+                )
+
+        # separator before the trash
+        sep_x = layout[-2]["centre"] + layout[-2]["size"] / 2
+        sep_x += m.px("dock_gap") * 0.5
+        draw.fill_squircle(cr, sep_x, shelf_y + shelf_h * 0.24, 1,
+                           shelf_h * 0.52, 0.5, pal["separator"], 2.0)
+
+        if self.hover >= 0 and self.hover < len(layout):
+            self._paint_tooltip(cr, layout[self.hover])
+
+    def _paint_tooltip(self, cr, item):
+        m = self.metrics
+        pal = m.palette()
+        app = APPS[item["index"]] if item["index"] < len(APPS) else TRASH
+        label = app["label"]
+        font = 11 * m.scale
+        pad_x = 9 * m.scale
+        pad_y = 5 * m.scale
+
+        text_w = draw.text_width(cr, label, font)
+        w = text_w + pad_x * 2
+        h = font + pad_y * 2
+        x = item["centre"] - w / 2
+        y = item["bottom"] - item["size"] - 12 * m.scale - h
+
+        draw.fill_squircle(cr, x, y, w, h, 8 * m.scale, pal["fill_hover"], 2.0)
+        draw.stroke_squircle(cr, x, y, w, h, 8 * m.scale, pal["separator"],
+                             1.0, 2.0)
+        draw.draw_text(cr, x + w / 2, y + h / 2, label, font, pal["text"],
+                       align="center", baseline="middle")
+
+    def _is_running(self, app):
+        key = (app.get("app") or "").lower()
+        if not key or not self._running:
+            return False
+        for running in self._running:
+            if running == key or key in running or running in key:
+                return True
+        return False
+
+    # -- input ---------------------------------------------------------------
+
+    def on_motion(self, x, y):
+        self._update_targets()
+        for item in self._layout:
+            if item["x"] <= x <= item["x"] + item["size"]:
+                if self.hover != item["index"]:
+                    self.hover = item["index"]
+                    self.redraw()
+                return False
+        if self.hover != -1:
+            self.hover = -1
+            self.redraw()
+        return False
+
+    def on_click(self, x, y, button):
+        for item in self._layout:
+            if item["x"] <= x <= item["x"] + item["size"]:
+                index = item["index"]
+                app = APPS[index] if index < len(APPS) else TRASH
+                self._activate(app, index)
+                return True
+        return False
+
+    def _activate(self, app, index=-1):
+        """Launch an app, or focus it when it is already running.
+
+        Launching a second copy of a running application is what made the
+        dock open everything twice; macOS raises the window instead.
+        """
+        if app.get("special") == "launchpad":
+            self.shell.open_launchpad()
+            return
+        key = (app.get("app") or "").lower()
+        if key and self._is_running(app):
+            if state.activate_app(key):
+                return
+        state.spawn(app["cmd"])
+        # the icon bounces while the application starts up
+        if index < 0:
+            index = 0
+        self._bounce = index
+        self._bounce_started = time.monotonic()
+        self._animate()
+
+    def on_leave(self):
+        self.hover = -1
+        self.pointer = (-1, -1)
+        self._update_targets()
+        self.redraw()
+        return False

@@ -1,0 +1,9 @@
+{
+    "scale_mode": "auto",
+    "scale": 1.0,
+    "theme": "dark",
+    "squareness": 5.0,
+    "show_widgets": true,
+    "show_dock": true,
+    "show_notch": true
+}
