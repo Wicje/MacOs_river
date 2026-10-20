@@ -114,6 +114,7 @@ class Spotlight(Panel):
         self.entry.set_placeholder_text("Spotlight Search")
         self.entry.connect("activate", self._on_activate)
         self.entry.connect("changed", self._on_changed)
+        self.entry.connect("key-press-event", self._on_key)
 
         overlay = Gtk.Overlay()
         self.remove(self.area)
@@ -271,6 +272,13 @@ class Spotlight(Panel):
         if index != self.hover:
             self.hover = index
             self.redraw()
+        return False
+
+    def _on_key(self, widget, event):
+        """Escape closes the panel."""
+        if event.keyval == Gdk.KEY_Escape:
+            self.close()
+            return True
         return False
 
     def on_click(self, x, y, button):

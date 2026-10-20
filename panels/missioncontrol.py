@@ -53,7 +53,7 @@ class MissionControl(Panel):
             metrics,
             layer="overlay",
             anchors={"top": True, "left": True, "right": True, "bottom": True},
-            keyboard=True,
+            keyboard=False,
         )
         self.shell = shell
         self._cards: list = []

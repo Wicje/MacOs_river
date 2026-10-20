@@ -58,7 +58,7 @@ class Settings(Panel):
             metrics,
             layer="overlay",
             anchors={"top": True, "left": True},
-            keyboard=True,
+            keyboard=False,
         )
         self.shell = shell
         self.section = "appearance"
@@ -161,6 +161,18 @@ class Settings(Panel):
             draw.draw_text(cr, x + 42 * scale, iy + item_h / 2 - 2 * scale, label,
                            m.font("menu_font_size"), color, baseline="middle",
                            max_width=sidebar - 56 * scale, ellipsize=True)
+
+        # the traffic lights
+        light = 12 * scale
+        lx = x + 16 * scale
+        ly = y + 16 * scale
+        for index, colour in enumerate(((1.0, 0.23, 0.19), (1.0, 0.62, 0.0),
+                                        (0.30, 0.80, 0.20))):
+            cx = lx + index * (light + 7 * scale)
+            draw.fill_squircle(cr, cx, ly, light, light, light / 2,
+                               (*colour, 0.92), 2.0)
+            self._rows.append((cx, ly, light, light,
+                                lambda _x=None, index=index: self._light(index)))
 
         content_x = x + sidebar + 24 * scale
         content_w = w - sidebar - 48 * scale
@@ -349,6 +361,28 @@ class Settings(Panel):
         draw.fill_squircle(cr, x, y, fill, height, height / 2, pal["accent"], 2.0)
         self._rows.append((x, y - 8 * scale, w, height + 16 * scale,
                             lambda cx: callback(int(max(0, min(100, (cx - x) / w * 100))))))
+
+    def _light(self, index):
+        """The red, yellow and green buttons."""
+        if index == 0:
+            self.close()
+        elif index == 1:
+            self.hide()
+        else:
+            self.toggle_size()
+
+    def toggle_size(self):
+        """Make the window bigger, the way the green button does."""
+        m = self.metrics
+        big = 1.4
+        width = int(WIDTH * m.scale * big)
+        height = int(HEIGHT * m.scale * big)
+        screen_w = m.width or 1366
+        screen_h = m.height or 768
+        self.set_content_size(width, height)
+        self.set_position(int((screen_w - width) / 2),
+                          int((screen_h - height) / 2))
+        self.redraw()
 
     def _draw_glyph(self, cr, name, x, y, size, color):
         fn = getattr(glyphs, name, None)

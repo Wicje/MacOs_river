@@ -211,6 +211,10 @@ class Shell:
         elif command.startswith("settings:"):
             self.settings.section = command.split(":", 1)[1]
             self.open_settings()
+        elif command == "dockmenu":
+            from .panels import dock as dock_module
+            if dock_module.APPS:
+                self.open_dock_menu(dock_module.APPS[1], 1)
         elif command.startswith("popup:"):
             self.open_popup(command.split(":", 1)[1])
         elif command == "close":
