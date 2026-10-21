@@ -26,7 +26,10 @@ class Sensor(Panel):
                    {"bottom": True, "left": True, "right": True})
         super().__init__(
             metrics,
-            layer="top",
+            # the top strip lies above the menu bar, so it is on the
+            # overlay layer; both strips are mapped after the panels, so
+            # they always get the pointer
+            layer="overlay" if edge == "top" else "top",
             anchors=anchors,
             margins={"left": 0, "right": 0},
             keyboard=False,

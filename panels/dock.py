@@ -104,11 +104,14 @@ class Dock(Panel):
         self._base_margin = int(m.px("dock_margin_bottom"))
         # the shelf slides inside the surface, so the surface itself stays
         # on the screen and the compositor keeps sending it frames
-        self._slide_distance = self._base_margin + self.shelf_height(metrics)
+        self._slide_distance = 4 + self.shelf_height(metrics)
         super().__init__(
             metrics,
             layer="top",
             anchors={"bottom": True},
+            # the surface stops short of the bottom edge: the strip that
+            # watches the edge is never covered by the dock itself
+            margins={"bottom": 4},
             exclusive=0,
         )
         self.shell = shell
@@ -482,7 +485,7 @@ class Dock(Panel):
         icon_bottom = shelf_y + shelf_h - m.px("dock_pad_y")
         top = icon_bottom - m.px("dock_icon_max")
         # the shelf slides out of the surface, and the region with it
-        return [(shelf_x, top + self._offset, shelf_w, icon_bottom - top)]
+        return [(shelf_x, top, shelf_w, icon_bottom - top)]
 
     def on_motion(self, x, y):
         self._update_targets()

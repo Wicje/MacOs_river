@@ -95,9 +95,11 @@ class Shell:
         self.stage_manager = StageManager(self.metrics, self)
         self.screenshot_hud = ScreenshotHUD(self.metrics, self)
         self.assistant = Assistant(self.metrics, self)
-        # the bottom edge of the screen is the hot zone of the dock; the
-        # sensor has to be mapped before the dock so the dock stays on top
-        self.sensors = [Sensor(self.metrics, self, "bottom")]
+        # the edges of the screen are the hot zones of the dock and the
+        # notch; the strips are mapped after the panels, so they always
+        # get the pointer
+        self.sensors = [Sensor(self.metrics, self, "top"),
+                        Sensor(self.metrics, self, "bottom")]
         self._notch_until = 0.0
         self._dock_until = 0.0
         self._at_edge = None
@@ -121,14 +123,13 @@ class Shell:
         self.about = About(self.metrics, self)
         self.force_quit = ForceQuit(self.metrics, self)
         self.windows = [
-            *self.sensors,
             self.menubar, self.notch, self.dock, self.widgets,
             self.desktop_icons, self.switcher, self.quicklook,
             self.stage_manager, self.screenshot_hud, self.assistant,
             self.control_centre, self.dropdown, self.spotlight,
             self.launchpad, self.mission_control, self.notification_centre,
             self.spaces, self.settings, self.about, self.force_quit,
-        ] + list(self.popups.values())
+        ] + list(self.popups.values()) + self.sensors
 
     # -- lifecycle -----------------------------------------------------------
 
