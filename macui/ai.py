@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import json
+import signal
 import os
 import shutil
 import subprocess
@@ -160,3 +161,136 @@ def apply_action(action, text):
     """Run one writing tool over the text."""
     prompt = f"{action}\n\n{text}"
     return chat("write", prompt, system=WRITE_SYSTEM)
+
+
+# --- voice ------------------------------------------------------------------
+#
+# macOS listens to you.  Here the microphone is recorded with pipewire and
+# the words are written by whatever speech recognition is on the machine:
+# whisper.cpp, the openai-whisper command or vosk.
+
+VOICE_FILE = "/tmp/macshell-voice.wav"
+WHISPER_MODEL = os.environ.get(
+    "MACSHELL_WHISPER_MODEL",
+    os.path.expanduser("~/.cache/macshell/ggml-base.bin"))
+
+_recorder = None
+
+
+def start_recording():
+    """Start recording from the default microphone."""
+    global _recorder
+    stop_recording()
+    command = ["pw-record", "--rate", "16000", "--channels", "1",
+               "--format", "s16", VOICE_FILE]
+    try:
+        _recorder = subprocess.Popen(command, stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL)
+    except OSError:
+        _recorder = None
+    return _recorder is not None
+
+
+def stop_recording():
+    """Stop the recording and return the file that was written."""
+    global _recorder
+    if _recorder is None:
+        return None
+    try:
+        _recorder.send_signal(signal.SIGINT)
+        _recorder.wait(timeout=5)
+    except Exception:  # noqa: BLE001
+        try:
+            _recorder.kill()
+        except Exception:  # noqa: BLE001
+            pass
+    _recorder = None
+    try:
+        if os.path.exists(VOICE_FILE) and os.path.getsize(VOICE_FILE) > 100:
+            return VOICE_FILE
+    except OSError:
+        pass
+    return None
+
+
+def _run(command, timeout=180):
+    try:
+        return subprocess.run(command, capture_output=True, text=True,
+                              timeout=timeout).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _whisper_cpp(path):
+    """whisper.cpp, the lightest of the three."""
+    binary = None
+    for name in ("whisper-cli", "whisper-cpp", "whisper"):
+        if shutil.which(name):
+            binary = name
+            break
+    if not binary or not os.path.exists(WHISPER_MODEL):
+        return None
+    out = "/tmp/macshell-voice"
+    _run([binary, "-m", WHISPER_MODEL, "-f", path, "-nt", "-otxt",
+          "-of", out], timeout=300)
+    try:
+        with open(out + ".txt", encoding="utf-8", errors="replace") as fh:
+            text = fh.read().strip()
+        return text or None
+    except OSError:
+        return None
+
+
+def _whisper_python(path):
+    """The openai-whisper command."""
+    if not shutil.which("whisper"):
+        return None
+    out = "/tmp/macshell-whisper"
+    os.makedirs(out, exist_ok=True)
+    _run(["whisper", path, "--model", "base", "--output_format", "txt",
+          "--output_dir", out], timeout=600)
+    name = os.path.splitext(os.path.basename(path))[0] + ".txt"
+    try:
+        with open(os.path.join(out, name), encoding="utf-8",
+                  errors="replace") as fh:
+            text = fh.read().strip()
+        return text or None
+    except OSError:
+        return None
+
+
+def _vosk(path):
+    """vosk, the offline one with the small models."""
+    if not shutil.which("vosk-transcriber"):
+        return None
+    out = "/tmp/macshell-vosk.txt"
+    _run(["vosk-transcriber", "-i", path, "-o", out], timeout=300)
+    try:
+        with open(out, encoding="utf-8", errors="replace") as fh:
+            text = fh.read().strip()
+        return text or None
+    except OSError:
+        return None
+
+
+def transcribe(path):
+    """Turn a recording into text.  Returns (text, error)."""
+    if not path or not os.path.exists(path):
+        return None, "Nothing was recorded."
+    text = _whisper_cpp(path)
+    if text is None:
+        text = _whisper_python(path)
+    if text is None:
+        text = _vosk(path)
+    if text is None:
+        return None, ("No speech recognition found.  Install whisper.cpp "
+                      "(pacman -S whisper-cpp) and put a model in "
+                      "~/.cache/macshell/ggml-base.bin")
+    return text, None
+
+
+def voice_ready():
+    """True when something on the machine can write down the words."""
+    if shutil.which("whisper-cli") and os.path.exists(WHISPER_MODEL):
+        return True
+    return bool(shutil.which("whisper") or shutil.which("vosk-transcriber"))

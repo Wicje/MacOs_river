@@ -83,10 +83,15 @@ class Dock(Panel):
     NAMESPACE = "mac-dock"
 
     def __init__(self, metrics, shell):
+        m = metrics
+        # the surface starts off screen and slides in when it is wanted
+        self._base_margin = int(m.px("dock_margin_bottom"))
+        self._hidden_margin = self._base_margin - self.panel_height(metrics)
         super().__init__(
             metrics,
             layer="top",
             anchors={"bottom": True},
+            margins={"bottom": self._hidden_margin},
             exclusive=0,
         )
         self.shell = shell
@@ -131,11 +136,11 @@ class Dock(Panel):
 
     # -- geometry ------------------------------------------------------------
 
-    def panel_height(self):
-        m = self.metrics
+    def panel_height(self, m=None):
+        m = m or self.metrics
         shelf_h = m.px("dock_icon") + m.px("dock_pad_y") * 2
-        return int(m.px("dock_margin_bottom") + shelf_h
-                   + (m.px("dock_icon_max") - m.px("dock_icon")) + TOOLTIP_SPACE)
+        return int(shelf_h + (m.px("dock_icon_max") - m.px("dock_icon"))
+                   + TOOLTIP_SPACE)
 
     def panel_width(self):
         """Width of the dock surface.
@@ -186,7 +191,10 @@ class Dock(Panel):
         shelf_x = (width - shelf_w) / 2
 
         shelf_h = self.shelf_height()
-        shelf_y = height - m.px("dock_margin_bottom") - shelf_h
+        # the shelf sits at the bottom of the surface; the surface itself
+        # stops short of the bottom edge of the screen, so the strip that
+        # brings the dock back is never covered by it
+        shelf_y = height - shelf_h
         icon_bottom = shelf_y + shelf_h - m.px("dock_pad_y")
 
         layout = []
@@ -431,17 +439,13 @@ class Dock(Panel):
         """Slide the dock in or out of the screen.
 
         macOS slides the dock down when it hides and pushes it up when the
-        pointer reaches the bottom edge; the surface stays alive so the
-        animation is possible.
+        pointer reaches the bottom edge.  The surface is never unmapped:
+        it only moves, which keeps the animation smooth.
         """
         if shown:
-            if not self.get_visible():
-                self.show_all()
-            self.slide("bottom", 0)
-            self.redraw()
-            return
-        self.slide("bottom", -self.panel_height(),
-                   done=lambda: self.hide())
+            self.slide("bottom", self._base_margin)
+        else:
+            self.slide("bottom", self._hidden_margin)
 
     # -- input ---------------------------------------------------------------
 

@@ -9,6 +9,7 @@ used to.
 from __future__ import annotations
 
 import ctypes
+import sys
 
 import gi
 
@@ -90,7 +91,8 @@ class Panel(Gtk.Window):
     NAMESPACE = "mac-panel"
 
     def __init__(self, metrics, *, layer="overlay", anchors=None, margins=None,
-                 exclusive=0, keyboard=False, namespace=None):
+                 exclusive=0, keyboard=False, namespace=None,
+                 slide_edge="bottom"):
         super().__init__()
         self.metrics = metrics
         self.pointer = (-1, -1)
@@ -105,10 +107,10 @@ class Panel(Gtk.Window):
         self.set_keep_above(True)
         self.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
 
-        self._slide_edge = "bottom"
-        self._slide_value = 0.0
-        self._slide_target = 0.0
-        self._slide_timer = None
+        self._slide_edge = slide_edge
+        self._slide_value = float((margins or {}).get(slide_edge, 0))
+        self._slide_target = self._slide_value
+        self._slide_source = None
         self._slide_done = None
 
         GtkLayerShell.init_for_window(self)
@@ -200,7 +202,9 @@ class Panel(Gtk.Window):
         except Exception:  # noqa: BLE001
             # a panel that cannot shape its input simply keeps the whole
             # surface, which is what the shell did before
-            pass
+            import traceback
+            print(f"macshell: input region failed: {traceback.format_exc()}",
+                  file=sys.stderr, flush=True)
         finally:
             if region:
                 _CAIRO.cairo_region_destroy(region)
@@ -217,28 +221,33 @@ class Panel(Gtk.Window):
 
         A negative margin pushes the surface off the screen, which is how
         the dock slides down and the notch slides up the way macOS does it.
+
+        The animation runs on the frame clock: a new margin only reaches
+        the compositor when it rides along with a frame that is drawn, and
+        the frame clock is what keeps the two in step.
         """
         self._slide_edge = edge
         self._slide_target = float(target)
         self._slide_done = done
-        if self._slide_timer is None:
-            self._slide_timer = GLib.timeout_add(16, self._slide_step)
+        if self._slide_source is None:
+            self._slide_source = self.area.add_tick_callback(self._slide_tick)
 
-    def _slide_step(self):
+    def _slide_tick(self, _widget, _clock):
         current = self._slide_value
         target = self._slide_target
         if abs(target - current) < 1.0:
             self._slide_value = target
             self._apply_slide()
-            self.redraw()
-            self._slide_timer = None
-            if self._slide_done:
-                self._slide_done()
+            self.area.queue_draw()
+            self._slide_source = None
+            done = self._slide_done
+            self._slide_done = None
+            if done:
+                done()
             return False
         self._slide_value = current + (target - current) * 0.4
         self._apply_slide()
-        # the new margin only reaches the compositor with a frame
-        self.redraw()
+        self.area.queue_draw()
         return True
 
     def _apply_slide(self):

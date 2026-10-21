@@ -43,11 +43,16 @@ class Notch(Panel):
     def __init__(self, metrics, shell):
         width = int(metrics.px("notch_width"))
         height = int(metrics.px("notch_height"))
+        # the card starts under the top edge and slides down when it is
+        # wanted; the surface is never unmapped, so the slide is smooth
+        self._hidden_margin = -height
         super().__init__(
             metrics,
             layer="top",
             anchors={"top": True},
+            margins={"top": self._hidden_margin},
             keyboard=False,
+            slide_edge="top",
         )
         self.shell = shell
         self.set_content_size(width, height)
@@ -70,12 +75,9 @@ class Notch(Panel):
         not near the top of the display.
         """
         if shown:
-            self.show_all()
             self.slide("top", 0)
-            self.redraw()
-            return
-        self.slide("top", -self.metrics.px("notch_height"),
-                   done=lambda: self.hide())
+        else:
+            self.slide("top", self._hidden_margin)
 
     # -- state ---------------------------------------------------------------
 

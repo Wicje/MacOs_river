@@ -52,6 +52,7 @@ class Assistant(Panel):
         self.answer = ""
         self.error = ""
         self.busy = False
+        self._listening = False
         self._buttons: list = []
         self._rows: list = []
         width = int(WIDTH * metrics.scale)
@@ -144,6 +145,47 @@ class Assistant(Panel):
         self._entry.set_text("")
         self._run("ask", text)
 
+    # -- the voice -----------------------------------------------------------
+
+    def _toggle_recording(self):
+        """Listen to the microphone, the way Siri does."""
+        if self._listening:
+            self._listening = False
+            path = ai.stop_recording()
+            self.redraw()
+            if not path:
+                self.error = "Nothing was recorded."
+                self.redraw()
+                return
+            self.busy = True
+            self.redraw()
+
+            def work():
+                text, error = ai.transcribe(path)
+                GLib.idle_add(self._heard, text, error)
+
+            threading.Thread(target=work, daemon=True).start()
+            return
+
+        if not ai.start_recording():
+            self.error = ("The microphone could not be opened.  "
+                          "Check that pipewire sees it.")
+            self.redraw()
+            return
+        self._listening = True
+        self.error = ""
+        self.redraw()
+
+    def _heard(self, text, error):
+        self.busy = False
+        if error:
+            self.error = error
+        elif text:
+            self._entry.set_text(text)
+            self.question = text
+        self.redraw()
+        return False
+
     # -- painting ------------------------------------------------------------
 
     def paint(self, cr, width, height):
@@ -175,6 +217,19 @@ class Assistant(Panel):
                                (*colour, 0.92), 2.0)
             self._rows.append((cx, cy, light, light,
                                 lambda _x=None, index=index: self._light(index)))
+
+        # -- the microphone -------------------------------------------------
+        mic = 26 * scale
+        mx = width - 16 * scale - 3 * (light + 7 * scale) - 20 * scale - mic
+        my = 12 * scale
+        listening = self._listening
+        draw.fill_squircle(cr, mx, my, mic, mic, mic / 2,
+                           (1.0, 0.23, 0.19, 0.9) if listening
+                           else pal["fill_hover"], 2.0)
+        glyphs.microphone(cr, mx + mic * 0.3, my + mic * 0.26, mic * 0.4,
+                          (1.0, 1.0, 1.0, 1.0) if listening else pal["text"])
+        self._rows.append((mx, my, mic, mic,
+                           lambda _x=None: self._toggle_recording()))
 
         # -- the modes ------------------------------------------------------
         y = 40 * scale

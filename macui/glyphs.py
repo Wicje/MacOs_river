@@ -442,3 +442,26 @@ def wand(cr, x, y, size, color):
     cr.line_to(x + 6.0 * s, y + 6.4 * s)
     cr.stroke()
     cr.restore()
+
+
+def microphone(cr, x, y, size, color):
+    """The microphone of the dictation."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.5 * s)
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    # the capsule
+    cr.arc(x + 8 * s, y + 5.4 * s, 2.6 * s, math.pi, 2 * math.pi)
+    cr.stroke()
+    cr.move_to(x + 5.4 * s, y + 5.6 * s)
+    cr.line_to(x + 5.4 * s, y + 8.0 * s)
+    cr.arc(x + 8 * s, y + 8.0 * s, 2.6 * s, math.pi, 0, True)
+    cr.stroke()
+    # the stand
+    cr.move_to(x + 8 * s, y + 10.6 * s)
+    cr.line_to(x + 8 * s, y + 13.4 * s)
+    cr.move_to(x + 5.6 * s, y + 13.4 * s)
+    cr.line_to(x + 10.4 * s, y + 13.4 * s)
+    cr.stroke()
+    cr.restore()

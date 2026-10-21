@@ -4,6 +4,7 @@
 #
 #   ./setup.sh              install everything and start the shell
 #   ./setup.sh --deps       only install the tools and applications
+#   ./setup.sh --voice      install speech recognition and its model
 #   ./setup.sh --check      only report what is missing
 #   ./setup.sh --no-deps    install the shell but touch nothing else
 #
@@ -20,7 +21,8 @@ case "${1:-}" in
     --deps) MODE="deps" ;;
     --no-deps) MODE="shell" ;;
     --check) MODE="check" ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    --voice) MODE="voice" ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
     "") ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
 esac
@@ -40,7 +42,8 @@ PACMAN_PKGS=(python python-gobject pycairo gtk3 playerctl wpcli brightnessctl
              wayland-scanner gcc ghostty yazi foot mpv vlc dolphin dolphin-plugins
              ffmpeg thunar gimp qt5-wayland qt6-wayland
              xdg-desktop-portal-gtk libadwaita
-             gvfs-mtp gvfs-gphoto2 gvfs-smb)
+             gvfs-mtp gvfs-gphoto2 gvfs-smb
+             whisper-cpp)
 
 APT_PKGS=(python3 python3-gi python3-cairo gir1.2-gtk-3.0 playerctl wpctl
           brightnessctl network-manager bluez mako wl-clipboard wtype
