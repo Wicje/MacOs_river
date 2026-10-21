@@ -68,8 +68,8 @@ BASE = {
     "widget_screen_h": 96,
     # notch
     "notch_width": 520,
-    "notch_height": 64,
-    "notch_radius": 14,
+    "notch_height": 140,
+    "notch_radius": 20,
     "notch_pad": 16,
     "notch_art": 44,
     "notch_font_size": 12,

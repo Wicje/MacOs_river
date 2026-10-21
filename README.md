@@ -114,6 +114,32 @@ cd ~/.config/macshell
 systemd user units, builds the small helper that lists the compositor's
 windows and enables both services.
 
+## The notch
+
+The notch is the card that hangs from the top of the screen, the way macOS
+26 has it:
+
+* the **media card** when something is playing: the album art, the title,
+  the artist, the progress of the track with the time on both sides and the
+  playback buttons (shuffle, previous, play, next, favourite),
+* the **clipboard** when something was just copied: the text or the picture,
+  with the clipboard button lit up,
+* the **calendar** and the clock when there is nothing else to say.
+
+The card slides down when the pointer reaches the top of the screen and
+slides away again when it leaves.  It is connected to the media player
+through MPRIS, so any player that speaks it fills the card.
+
+## Adding programs to the dock
+
+Right click a program in the **Launchpad** and choose *Keep in Dock*.  The
+dock keeps the whole entry in `~/.config/macshell/dock.json`, so a program
+of its own survives a restart.  Right clicking a dock icon offers *Remove
+from Dock* and *Quit*.
+
+The programs the shell starts with are Ghostty, Foot, Firefox, Continua,
+Dolphin, VS Code, GIMP, mpv, Audacity, OBS, Spotify and Steam.
+
 ## The widgets
 
 The column under the menu bar carries the calendar, the clock, the system

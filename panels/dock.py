@@ -60,18 +60,31 @@ def _load_apps():
         return list(DEFAULT_APPS)
     apps = []
     for entry in saved:
-        for known in DEFAULT_APPS:
-            if known["id"] == entry:
-                apps.append(dict(known))
-                break
+        if isinstance(entry, str):
+            # the old way: only the ids of the built in list
+            for known in DEFAULT_APPS:
+                if known["id"] == entry:
+                    apps.append(dict(known))
+                    break
+        elif isinstance(entry, dict) and entry.get("id"):
+            # a program of its own, added from the launchpad
+            apps.append({
+                "id": entry["id"],
+                "label": entry.get("label") or entry["id"],
+                "cmd": entry.get("cmd", ""),
+                "app": entry.get("app") or entry["id"],
+                "special": entry.get("special", ""),
+                "glyph": entry.get("glyph", ""),
+            })
     return apps
 
 
 def _save_apps(apps):
+    """The dock keeps the whole entry, so a new program can be added."""
     try:
         os.makedirs(os.path.dirname(DOCK_CONFIG), exist_ok=True)
         with open(DOCK_CONFIG, "w") as fh:
-            json.dump([app["id"] for app in apps], fh, indent=4)
+            json.dump(apps, fh, indent=4)
     except OSError:
         pass
 

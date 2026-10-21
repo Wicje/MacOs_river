@@ -25,6 +25,8 @@ _cache = {
     "running": set(),
     "toplevels": [],
     "screentime": None,
+    "clipboard": None,
+    "clip_id": "",
 }
 _cache_lock = threading.Lock()
 
@@ -389,8 +391,49 @@ def focused_app():
 # takes a few hundred milliseconds.  Doing that on the main thread made the
 # panels feel sluggish, so a background thread keeps the values fresh.
 
+def _read_clipboard():
+    """The last thing that was copied.
+
+    The text comes from the clipboard history, the picture from the
+    clipboard itself.  Nothing is written down: it only lives as long as
+    the shell does.
+    """
+    out = run("cliphist list")
+    first = out.splitlines()[0] if out else ""
+    entry_id, _, text = first.partition("\t")
+    if not entry_id:
+        return None
+    if _cache.get("clip_id") == entry_id:
+        return None
+    image = None
+    types = run("wl-paste --list-types")
+    if "image/png" in types:
+        try:
+            data = subprocess.run(["wl-paste", "--type", "image/png"],
+                                  capture_output=True, timeout=4).stdout
+        except (OSError, subprocess.SubprocessError):
+            data = b""
+        if data:
+            path = "/tmp/macshell-clipboard.png"
+            try:
+                with open(path, "wb") as fh:
+                    fh.write(data)
+                image = path
+            except OSError:
+                image = None
+    return {"id": entry_id, "text": text.strip(), "image": image,
+            "at": time.time()}
+
+
+def clipboard():
+    """The last thing that was copied, with the time it happened."""
+    with _cache_lock:
+        return dict(_cache.get("clipboard") or {})
+
+
 def _refresh_once():
     media = _read_media()
+    clip = _read_clipboard()
     entries = _toplevels()
     app_id = ""
     title = ""
@@ -404,6 +447,9 @@ def _refresh_once():
             title = entry.get("title") or ""
     _track_screen_time(app_id)
     with _cache_lock:
+        if clip is not None:
+            _cache["clipboard"] = clip
+            _cache["clip_id"] = clip["id"]
         _cache["media"] = media
         _cache["app_id"] = app_id
         _cache["window"] = title

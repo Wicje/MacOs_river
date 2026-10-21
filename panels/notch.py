@@ -20,14 +20,26 @@ import cairo
 import gi
 
 gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 
-from gi.repository import GdkPixbuf  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf  # noqa: E402
 
 from ..macui import draw, glyphs, state  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 ART_CACHE = "/tmp/macshell-art"
+
+
+def _clock(seconds):
+    """The time of a track, as minutes and seconds."""
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        return "0:00"
+    if seconds < 0:
+        seconds = 0
+    return f"{seconds // 60}:{seconds % 60:02d}"
 NIGHTLIGHT = os.path.expanduser("~/.config/river/nightlight.py")
 SCREENSHOT = os.path.expanduser("~/.config/river/screenshot.sh")
 
@@ -49,7 +61,9 @@ class Notch(Panel):
         self._slide_distance = height
         super().__init__(
             metrics,
-            layer="top",
+            # the overlay layer has no exclusive zone, so the card hangs
+            # over the menu bar the way it does in macOS
+            layer="overlay",
             anchors={"top": True},
             keyboard=False,
             slide_edge="top",
@@ -60,6 +74,8 @@ class Notch(Panel):
         screen = metrics.width or 1366
         self.set_horizontal_offset(int((screen - width) / 2))
         self._media = None
+        self._clip = {}
+        self._dnd = False
         self._art = None
         self._art_url = None
         self._buttons: list = []
@@ -93,6 +109,8 @@ class Notch(Panel):
 
     def refresh(self):
         self._media = state.now_playing()
+        self._clip = state.clipboard()
+        self._dnd = state.dnd_on()
         self._load_art()
         self._battery = state.battery_level()
         self._charging = state.battery_charging()
@@ -153,125 +171,245 @@ class Notch(Panel):
 
         self._buttons = []
         pad = m.px("notch_pad")
-        art = m.px("notch_art")
+        media = self._media
 
-        # -- left: the media widget, or the calendar when nothing plays
-        x = pad
-        if not self._media:
-            self._paint_calendar(cr, x, 10 * scale, 118 * scale,
-                                 height - 20 * scale, pal)
+        clip = self._clip or {}
+        fresh = clip and (time.time() - clip.get("at", 0)) < 25
+        if media:
+            self._paint_media(cr, width, height, pad, scale, pal)
+        elif fresh:
+            self._paint_clipboard(cr, width, height, pad, scale, pal, clip)
         else:
-            title, artist, status, position, length, _ = self._media
-            if self._art is not None:
-                pw, ph = self._art.get_width(), self._art.get_height()
-                factor = art / max(pw, ph)
+            self._paint_calendar(cr, pad, 12 * scale, 132 * scale,
+                                 height - 24 * scale, pal)
+
+        # the quick actions on the right, the clock under them
+        self._paint_actions(cr, width, height, pad, scale, pal)
+        self._paint_clock(cr, width, height, pad, scale, pal)
+
+        cr.restore()
+
+    # -- the media card ------------------------------------------------------
+
+    def _paint_media(self, cr, width, height, pad, scale, pal):
+        """The card macOS shows when something is playing.
+
+        The album art, the title, the progress of the track and the
+        playback buttons, the way the notch of macOS 26 has it.
+        """
+        m = self.metrics
+        title, artist, _status, position, length, _url = self._media
+        art = 64 * scale
+
+        # the album art
+        art_x = pad
+        art_y = 16 * scale
+        draw.fill_squircle(cr, art_x, art_y, art, art, 10 * scale,
+                           pal["fill_hover"], m.squareness)
+        if self._art is not None:
+            pw, ph = self._art.get_width(), self._art.get_height()
+            factor = art / max(pw, ph)
+            cr.save()
+            cr.translate(art_x + (art - pw * factor) / 2,
+                         art_y + (art - ph * factor) / 2)
+            cr.scale(factor, factor)
+            Gdk.cairo_set_source_pixbuf(cr, self._art, 0, 0)
+            cr.paint()
+            cr.restore()
+        else:
+            draw.draw_text(cr, art_x + art / 2, art_y + art / 2,
+                           (title or "?")[0].upper(), art * 0.42,
+                           pal["text_dim"], weight="bold", align="center",
+                           baseline="middle")
+
+        # the title and the artist
+        text_x = art_x + art + 16 * scale
+        draw.draw_text(cr, text_x, 34 * scale, title or "",
+                       m.font("notch_font_size") * 1.15, pal["text"],
+                       weight="bold", baseline="middle",
+                       max_width=220 * scale, ellipsize=True)
+        if artist:
+            draw.draw_text(cr, text_x, 56 * scale, artist,
+                           m.font("notch_font_size") * 0.95, pal["text_dim"],
+                           baseline="middle", max_width=220 * scale,
+                           ellipsize=True)
+
+        # the airplay button
+        glyphs.airplay(cr, width - 250 * scale, 30 * scale, 16 * scale,
+                       pal["text_dim"])
+
+        # the progress of the track, with the time on both sides
+        bar_x = 56 * scale
+        bar_w = width - 250 * scale - bar_x
+        bar_y = 92 * scale
+        draw.draw_text(cr, pad, bar_y, _clock(position), 10 * scale,
+                       pal["text_faint"], baseline="middle")
+        draw.fill_squircle(cr, bar_x, bar_y - 1.5 * scale, bar_w, 3 * scale,
+                           1.5 * scale, pal["fill_hover"], 2.0)
+        if length:
+            ratio = max(0.0, min(1.0, position / length))
+            draw.fill_squircle(cr, bar_x, bar_y - 1.5 * scale,
+                               bar_w * ratio, 3 * scale, 1.5 * scale,
+                               pal["text_dim"], 2.0)
+        draw.draw_text(cr, bar_x + bar_w + 10 * scale, bar_y, _clock(length),
+                       10 * scale, pal["text_faint"], baseline="middle")
+
+        # the playback buttons, the way macOS lines them up
+        row_y = 118 * scale
+        centre = 198 * scale
+        playing = (self._media[2] or "").lower() == "playing"
+        buttons = [
+            ("shuffle", "shuffle", 16 * scale),
+            ("previous", "back", 18 * scale),
+            ("play-pause", "pause" if playing else "play", 24 * scale),
+            ("next", "forward", 18 * scale),
+            ("like", "star", 16 * scale),
+        ]
+        gap = 26 * scale
+        x = centre - (len(buttons) - 1) * gap / 2
+        for action, shape, size in buttons:
+            if action == "like":
+                glyphs.star(cr, x - size / 2, row_y - size / 2, size,
+                            pal["text_dim"])
+            else:
+                self._paint_button(cr, x - size / 2, row_y - size / 2, size,
+                                   shape, pal)
+            self._buttons.append((action, x - 12 * scale, row_y - 12 * scale,
+                                  24 * scale))
+            x += gap
+
+    def _paint_clipboard(self, cr, width, height, pad, scale, pal, clip):
+        """What was just copied, the way macOS shows it in the notch."""
+        m = self.metrics
+        text = clip.get("text") or ""
+        image = clip.get("image")
+
+        if image:
+            art = 64 * scale
+            draw.fill_squircle(cr, pad, 16 * scale, art, art, 10 * scale,
+                               pal["fill_hover"], m.squareness)
+            pixbuf = self._image_for(image)
+            if pixbuf is not None:
+                iw, ih = pixbuf.get_width(), pixbuf.get_height()
+                factor = min(art / iw, art / ih)
                 cr.save()
-                cr.translate(x, (height - art) / 2)
+                cr.translate(pad + (art - iw * factor) / 2,
+                             16 * scale + (art - ih * factor) / 2)
                 cr.scale(factor, factor)
-                Gdk.cairo_set_source_pixbuf(cr, self._art, 0, 0)
+                Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0)
                 cr.paint()
                 cr.restore()
-            else:
-                draw.fill_squircle(cr, x, (height - art) / 2, art, art, 8,
-                                   pal["fill_hover"], m.squareness)
-                glyphs.speaker(cr, x + art * 0.26, (height - art * 0.44) / 2,
-                               art * 0.48, pal["text_dim"])
-            x += art + 12 * scale
+            draw.draw_text(cr, pad + art + 16 * scale, 40 * scale, "Copied",
+                           m.font("notch_font_size"), pal["text_faint"],
+                           baseline="middle")
+            draw.draw_text(cr, pad + art + 16 * scale, 62 * scale, "an image",
+                           m.font("notch_font_size") * 1.1, pal["text"],
+                           weight="bold", baseline="middle")
+            return
 
-            text_w = 128 * scale
-            draw.draw_text(cr, x, height * 0.34, title, m.font("notch_font_size"),
-                           pal["text"], weight="bold", baseline="middle",
-                           max_width=text_w, ellipsize=True)
-            if artist:
-                draw.draw_text(cr, x, height * 0.58, artist,
-                               m.font("notch_font_size") * 0.85,
-                               pal["text_faint"], baseline="middle",
-                               max_width=text_w, ellipsize=True)
+        draw.draw_text(cr, pad, 34 * scale, "Copied", 11 * scale,
+                       pal["text_faint"], baseline="middle")
+        for index, line in enumerate(text.splitlines()[:3]):
+            draw.draw_text(cr, pad, 58 * scale + index * 20 * scale, line,
+                           m.font("notch_font_size") * 1.05, pal["text"],
+                           weight="bold" if index == 0 else "normal",
+                           baseline="middle", max_width=300 * scale,
+                           ellipsize=True)
 
-            # the progress of the track
-            if length:
-                ratio = max(0.0, min(1.0, position / length))
-                track_w = text_w
-                track_y = height * 0.76
-                draw.fill_squircle(cr, x, track_y, track_w, 3 * scale,
-                                   1.5 * scale, pal["fill_hover"], 2.0)
-                draw.fill_squircle(cr, x, track_y, track_w * ratio, 3 * scale,
-                                   1.5 * scale, pal["text_dim"], 2.0)
+    def _image_for(self, path):
+        """The picture that was copied."""
+        if getattr(self, "_clip_image", None) is not None:
+            return self._clip_image
+        pixbuf = None
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
+        except Exception:  # noqa: BLE001
+            pixbuf = None
+        self._clip_image = pixbuf
+        return pixbuf
 
-            # playback controls
-            bx = x + text_w + 16 * scale
-            for action, shape in (("previous", "back"), ("play-pause", "play"),
-                                  ("next", "forward")):
-                self._paint_button(cr, bx, (height - 14 * scale) / 2,
-                                   14 * scale, shape, pal)
-                self._buttons.append((action, bx - 4 * scale,
-                                      (height - 22 * scale) / 2, 22 * scale))
-                bx += 24 * scale
+    # -- the quick actions and the clock --------------------------------------
 
-        # -- middle: the quick actions ------------------------------------
-        mid_x = width * 0.63
-        button = 30 * scale
+    def _paint_actions(self, cr, width, height, pad, scale, pal):
+        """The round buttons on the right of the card."""
+        m = self.metrics
         actions = [
             ("clipboard", "clipboard", "Clipboard"),
             ("focus", "moon", "Focus"),
             ("screenshot", "camera", "Screenshot"),
             ("assistant", "sparkles", "Ask"),
         ]
+        size = 30 * scale
+        gap = 10 * scale
+        x = width - pad - size * 2 - gap
+        y = 16 * scale
+        lit = []
+        if self._clip and (time.time() - self._clip.get("at", 0)) < 25:
+            lit.append("clipboard")
+        if self._dnd:
+            lit.append("focus")
         for index, (action, glyph, label) in enumerate(actions):
-            cx = mid_x + (index - 1) * (button + 12 * scale)
-            cy = height / 2 - 4 * scale
+            col = index % 2
+            row = index // 2
+            cx = x + col * (size + gap)
+            cy = y + row * (size + gap)
             cr.save()
-            cr.set_source_rgba(*pal["fill_hover"])
-            cr.arc(cx, cy, button / 2, 0, 2 * math.pi)
+            if action in lit:
+                cr.set_source_rgba(*pal["accent"])
+            else:
+                cr.set_source_rgba(*pal["fill_hover"])
+            cr.arc(cx + size / 2, cy + size / 2, size / 2, 0, 2 * math.pi)
             cr.fill()
             cr.restore()
-            size = 15 * scale
-            self._draw_glyph(cr, glyph, cx - size / 2, cy - size / 2, size,
-                             pal["text"])
-            self._buttons.append((action, cx - button / 2, cy - button / 2,
-                                  button))
+            icon = 15 * scale
+            self._draw_glyph(cr, glyph, cx + (size - icon) / 2,
+                             cy + (size - icon) / 2, icon,
+                             pal["on_accent"] if action in lit else pal["text"])
+            self._buttons.append((action, cx, cy, size))
 
-        # -- right: the clock and the battery ----------------------------
+    def _paint_clock(self, cr, width, height, pad, scale, pal):
+        """The clock and the battery, under the quick actions."""
+        m = self.metrics
         now = time.localtime()
         right = width - pad
-        draw.draw_text(cr, right, height * 0.36, time.strftime("%H:%M", now),
-                       m.font("notch_font_size") * 1.5, pal["text"],
+        y = height - 38 * scale
+        draw.draw_text(cr, right, y, time.strftime("%H:%M", now),
+                       m.font("notch_font_size") * 1.35, pal["text"],
                        align="right", baseline="middle")
         detail = time.strftime("%a %-d %b", now)
         if self._battery is not None:
             detail = f"{self._battery}%  " + detail
-        draw.draw_text(cr, right, height * 0.64, detail,
+        draw.draw_text(cr, right, y + 20 * scale, detail,
                        m.font("notch_font_size") * 0.85, pal["text_faint"],
                        align="right", baseline="middle")
-
-        # separators
-        for sep_x in (width * 0.50, width * 0.755):
-            cr.set_source_rgba(*pal["separator"])
-            cr.rectangle(sep_x, height * 0.22, 1, height * 0.56)
-            cr.fill()
-
-        cr.restore()
 
     def _paint_calendar(self, cr, x, y, w, h, pal):
         """The little calendar the notch shows when nothing is playing."""
         import datetime
 
         m = self.metrics
+        scale = m.scale
         today = datetime.date.today()
-        draw.draw_text(cr, x, y + h * 0.18, today.strftime("%a").upper(),
-                       h * 0.20, pal["text_faint"], weight="bold",
+        cy = y + h / 2
+
+        draw.draw_text(cr, x, cy - 34 * scale, today.strftime("%a").upper(),
+                       11 * scale, pal["text_faint"], weight="bold",
                        baseline="middle")
-        draw.draw_text(cr, x, y + h * 0.56, str(today.day),
-                       h * 0.52, pal["text"], weight="bold",
-                       baseline="middle")
-        draw.draw_text(cr, x, y + h * 0.86, today.strftime("%B %Y"),
-                       h * 0.19, pal["text_faint"], baseline="middle")
+        draw.draw_text(cr, x, cy, str(today.day), 40 * scale, pal["text"],
+                       weight="bold", baseline="middle")
+        draw.draw_text(cr, x, cy + 32 * scale, today.strftime("%B %Y"),
+                       11 * scale, pal["text_faint"], baseline="middle")
 
     def _paint_button(self, cr, x, y, size, shape, pal):
         color = pal["text_dim"]
         cr.save()
         cr.set_source_rgba(*color)
-        if shape == "play":
+        if shape == "pause":
+            cr.rectangle(x + size * 0.24, y, size * 0.16, size)
+            cr.fill()
+            cr.rectangle(x + size * 0.58, y, size * 0.16, size)
+            cr.fill()
+        elif shape == "play":
             cr.move_to(x + size * 0.28, y)
             cr.line_to(x + size * 0.28, y + size)
             cr.line_to(x + size * 0.85, y + size / 2)
@@ -315,7 +453,7 @@ class Notch(Panel):
         return False
 
     def _activate(self, action):
-        if action in ("previous", "play-pause", "next"):
+        if action in ("previous", "play-pause", "next", "shuffle", "love"):
             _playerctl(action)
             self.refresh()
         elif action == "clipboard":
@@ -328,3 +466,9 @@ class Notch(Panel):
                              stderr=subprocess.DEVNULL)
         elif action == "assistant":
             self.shell.assistant.open("ask")
+        elif action == "shuffle":
+            _playerctl("shuffle")
+            self.refresh()
+        elif action == "like":
+            _playerctl("love")
+            self.refresh()

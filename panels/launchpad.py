@@ -243,6 +243,10 @@ class Launchpad(Panel):
                 return True
         for cx, cy, size, app in self._cells:
             if cx <= x <= cx + size and cy <= y <= cy + size:
+                if button == 3:
+                    # the right button opens the menu of the application
+                    self.shell.open_app_menu(app)
+                    return True
                 self._launch(app)
                 return True
         return False

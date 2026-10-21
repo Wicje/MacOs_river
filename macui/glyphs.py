@@ -465,3 +465,52 @@ def microphone(cr, x, y, size, color):
     cr.line_to(x + 10.4 * s, y + 13.4 * s)
     cr.stroke()
     cr.restore()
+
+
+def shuffle(cr, x, y, size, color):
+    """The crossed arrows of the shuffle button."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.3 * s)
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    cr.move_to(x + 2.0 * s, y + 4.0 * s)
+    cr.line_to(x + 4.6 * s, y + 4.0 * s)
+    cr.line_to(x + 12.0 * s, y + 12.0 * s)
+    cr.line_to(x + 14.0 * s, y + 12.0 * s)
+    cr.stroke()
+    cr.move_to(x + 2.0 * s, y + 12.0 * s)
+    cr.line_to(x + 4.6 * s, y + 12.0 * s)
+    cr.line_to(x + 12.0 * s, y + 4.0 * s)
+    cr.line_to(x + 14.0 * s, y + 4.0 * s)
+    cr.stroke()
+    # the arrow heads
+    cr.move_to(x + 11.6 * s, y + 4.0 * s)
+    cr.line_to(x + 14.4 * s, y + 4.0 * s)
+    cr.line_to(x + 14.4 * s, y + 6.6 * s)
+    cr.move_to(x + 11.6 * s, y + 12.0 * s)
+    cr.line_to(x + 14.4 * s, y + 12.0 * s)
+    cr.line_to(x + 14.4 * s, y + 9.4 * s)
+    cr.stroke()
+    cr.restore()
+
+
+def star(cr, x, y, size, color):
+    """The favourite star."""
+    s = _unit(cr, x, y, size)
+    cx, cy = x + 8 * s, y + 8 * s
+    outer, inner = 7.0 * s, 3.0 * s
+    cr.save()
+    cr.set_source_rgba(*color)
+    for index in range(10):
+        angle = math.pi / 2 + index * math.pi / 5
+        radius = outer if index % 2 == 0 else inner
+        px = cx + math.cos(angle) * radius
+        py = cy - math.sin(angle) * radius
+        if index == 0:
+            cr.move_to(px, py)
+        else:
+            cr.line_to(px, py)
+    cr.close_path()
+    cr.fill()
+    cr.restore()

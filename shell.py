@@ -653,6 +653,40 @@ class Shell:
         dock_module._save_apps(dock_module.APPS)
         self.dock.reload_apps()
 
+    def keep_app_in_dock(self, entry):
+        """Add an application of the launchpad to the dock."""
+        app = {
+            "id": entry.get("id", ""),
+            "label": entry.get("name", entry.get("id", "")),
+            "cmd": entry.get("exec", ""),
+            "app": entry.get("id", ""),
+        }
+        if not app["id"] or not app["cmd"]:
+            return
+        self.keep_in_dock(app)
+
+    def open_app_menu(self, entry):
+        """The menu of an application, the way macOS shows it."""
+        from .panels import dock as dock_module
+
+        in_dock = any(item["id"] == entry.get("id")
+                      for item in dock_module.APPS)
+        rows = []
+        if not in_dock:
+            rows.append({
+                "glyph": "grid", "label": "Keep in Dock", "detail": "",
+                "active": False,
+                "action": lambda: self.keep_app_in_dock(entry),
+            })
+        rows.append({
+            "glyph": "grid", "label": "Open", "detail": "", "active": False,
+            "action": lambda: state.spawn(entry.get("exec", "")),
+        })
+        menu = self.popups.get("app")
+        if menu is None:
+            menu = self.popups["wifi"]
+        menu.show_items(entry.get("name", "Application"), rows)
+
     def keep_in_dock(self, app):
         from .panels import dock as dock_module
 
