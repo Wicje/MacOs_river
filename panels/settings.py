@@ -26,11 +26,33 @@ SIDEBAR = 196
 SECTIONS = [
     ("appearance", "Appearance", "grid"),
     ("desktop", "Desktop & Dock", "display"),
+    ("centre", "Control Centre", "control_center"),
     ("sound", "Sound", "speaker"),
     ("displays", "Displays", "display"),
     ("notifications", "Notifications", "check"),
     ("keyboard", "Keyboard", "chevron_down"),
     ("about", "About", "apple"),
+]
+
+UTILITIES = [
+    ("accessibility", "accessibility"),
+    ("appearance", "moon"),
+    ("launchpad", "grid"),
+    ("spotlight", "spotlight"),
+    ("stage", "grid"),
+    ("nightshift", "moon"),
+    ("wallpaper", "display"),
+    ("settings", "grid"),
+    ("mirror", "airplay"),
+    ("display", "display"),
+    ("sound", "speaker"),
+]
+
+NOTCH_ACTIONS = [
+    ("clipboard", "clipboard", "Clipboard"),
+    ("focus", "moon", "Focus"),
+    ("screenshot", "camera", "Screenshot"),
+    ("assistant", "sparkles", "Ask"),
 ]
 
 SHORTCUTS = [
@@ -191,6 +213,8 @@ class Settings(Panel):
             self._paint_appearance(cr, x, top, w, scale, pal)
         elif self.section == "desktop":
             self._paint_desktop(cr, x, top, w, scale, pal)
+        elif self.section == "centre":
+            self._paint_centre(cr, x, top, w, scale, pal)
         elif self.section == "sound":
             self._paint_sound(cr, x, top, w, scale, pal)
         elif self.section == "displays":
@@ -303,6 +327,70 @@ class Settings(Panel):
         y += 44 * scale
         draw.draw_text(cr, x, y, "The wallpaper rotates through ~/mac and ~/Pictures/wall.",
                        m.font("cc_font_size"), pal["text_faint"], baseline="middle")
+
+    def _paint_centre(self, cr, x, y, w, scale, pal):
+        """Which tiles the Control Centre shows, and what the notch carries."""
+        m = self.metrics
+        cfg = self._config()
+
+        draw.draw_text(cr, x, y, "The tiles of the Control Centre", 11 * scale,
+                       pal["text_faint"], baseline="middle")
+        y += 26 * scale
+        tiles = cfg.get("cc_tiles") or [uid for uid, _g in UTILITIES]
+        y = self._tile_grid(cr, x, y, w, scale, pal, tiles, "cc_tiles",
+                            [uid for uid, _g in UTILITIES], UTILITIES)
+        y += 24 * scale
+
+        draw.draw_text(cr, x, y, "The buttons of the notch", 11 * scale,
+                       pal["text_faint"], baseline="middle")
+        y += 26 * scale
+        actions = cfg.get("notch_actions") or [a for a, _g, _l in NOTCH_ACTIONS]
+        self._tile_grid(cr, x, y, w, scale, pal, actions, "notch_actions",
+                        [a for a, _g, _l in NOTCH_ACTIONS], NOTCH_ACTIONS)
+
+    def _tile_grid(self, cr, x, y, w, scale, pal, chosen, key, all_ids,
+                   all_entries):
+        """A grid of small buttons, each one a switch."""
+        m = self.metrics
+        size = 30 * scale
+        gap = 8 * scale
+        per_row = max(1, int((w + gap) / (size + gap)))
+        for index, entry in enumerate(all_entries):
+            uid, glyph = entry[0], entry[1]
+            title = entry[2] if len(entry) > 2 else uid
+            col = index % per_row
+            row = index // per_row
+            bx = x + col * (size + gap)
+            by = y + row * (size + gap + 14 * scale)
+            on = uid in chosen
+            draw.fill_squircle(cr, bx, by, size, size, 7 * scale,
+                               pal["accent"] if on else pal["fill_hover"], 2.0)
+            self._draw_glyph(cr, glyph, bx + size * 0.24, by + size * 0.24,
+                             size * 0.52,
+                             pal["on_accent"] if on else pal["text_dim"])
+            label = title if len(title) <= 8 else title[:7] + "…"
+            draw.draw_text(cr, bx + size / 2, by + size + 9 * scale, label,
+                           8 * scale,
+                           pal["text"] if on else pal["text_faint"],
+                           align="center", baseline="middle",
+                           max_width=size + 12 * scale, ellipsize=True)
+            self._rows.append((bx, by, size, size,
+                                lambda _x=None, uid=uid, key=key, chosen=list(chosen):
+                                self._flip_tile(key, uid, chosen)))
+        rows = (len(all_entries) + per_row - 1) // per_row
+        return y + rows * (size + gap + 14 * scale)
+
+    def _flip_tile(self, key, uid, chosen):
+        """Turn a tile on or off."""
+        if uid in chosen:
+            new = [item for item in chosen if item != uid]
+        else:
+            new = list(chosen) + [uid]
+        self._set(key, new)
+        if key == "cc_tiles":
+            self.shell.control_centre.refresh()
+        if key == "notch_actions":
+            self.shell.notch.redraw()
 
     def _paint_sound(self, cr, x, y, w, scale, pal):
         m = self.metrics

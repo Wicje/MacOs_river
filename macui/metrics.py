@@ -164,6 +164,9 @@ DEFAULTS = {
     # how much accent colour they carry (0 … 1)
     "glass_opacity": 1.0,
     "glass_tint": 0.0,
+    # the tiles of the control centre and the buttons of the notch
+    "cc_tiles": [],
+    "notch_actions": [],
 }
 
 

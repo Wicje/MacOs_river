@@ -42,6 +42,7 @@ from .panels.menubar import MenuBar  # noqa: E402
 from .panels.notch import Notch  # noqa: E402
 from .panels.desktopicons import DesktopIcons  # noqa: E402
 from .panels.sensor import Sensor  # noqa: E402
+from .panels.snapzone import SnapZone  # noqa: E402
 from .panels.quicklook import QuickLook  # noqa: E402
 from .panels.screenshothud import ScreenshotHUD  # noqa: E402
 from .panels.stagemanager import StageManager  # noqa: E402
@@ -99,7 +100,10 @@ class Shell:
         # notch; the strips are mapped after the panels, so they always
         # get the pointer
         self.sensors = [Sensor(self.metrics, self, "top"),
-                        Sensor(self.metrics, self, "bottom")]
+                        Sensor(self.metrics, self, "bottom"),
+                        Sensor(self.metrics, self, "left"),
+                        Sensor(self.metrics, self, "right")]
+        self.snap_zone = SnapZone(self.metrics, self)
         self._notch_until = 0.0
         self._dock_until = 0.0
         self._at_edge = None
@@ -129,7 +133,7 @@ class Shell:
             self.control_centre, self.dropdown, self.spotlight,
             self.launchpad, self.mission_control, self.notification_centre,
             self.spaces, self.settings, self.about, self.force_quit,
-        ] + list(self.popups.values()) + self.sensors
+        ] + list(self.popups.values()) + [self.snap_zone] + self.sensors
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -149,6 +153,7 @@ class Shell:
         self.stage_manager.hide()
         self.screenshot_hud.hide()
         self.assistant.hide()
+        self.snap_zone.hide()
         for popup in self.popups.values():
             popup.hide()
         self.about.hide()
@@ -248,7 +253,10 @@ class Shell:
         elif command == "stage":
             self.stage_manager.toggle()
         elif command.startswith("tile:"):
-            actions.tile_window(command.split(":", 1)[1])
+            zone = command.split(":", 1)[1]
+            self.snap_zone.show_zone(zone if zone in ("left", "right") else "")
+            actions.tile_window(zone)
+            GLib.timeout_add(500, self.snap_zone.close)
         elif command == "ask":
             self.assistant.open("ask")
         elif command == "write":
@@ -342,21 +350,29 @@ class Shell:
     #   auto     the panel is only visible at the edge of the screen
 
     def pointer_moved(self, edge, absolute_y):
-        """The pointer reached the top or the bottom of the screen."""
+        """The pointer reached an edge of the screen."""
         screen_h = self.metrics.height or 768
+        screen_w = self.metrics.width or 1366
         now = time.monotonic()
         if edge == "top":
             if absolute_y <= 6:
                 self._notch_until = now + 2.5
             elif absolute_y > 60:
                 self._notch_until = 0
-        else:
+        elif edge == "bottom":
             # the pointer is in the strip along the bottom edge: the dock
             # stays there until the pointer leaves again
             if absolute_y >= screen_h - 6:
                 self._at_edge = "bottom"
             else:
                 self._at_edge = None
+        else:
+            # the left and the right edge show where a window would snap
+            limit = 6
+            if edge == "left" and absolute_y <= limit:
+                self.snap_zone.show_zone("left")
+            elif edge == "right" and absolute_y >= screen_w - limit:
+                self.snap_zone.show_zone("right")
         self._sync_panels()
 
     def pointer_left(self, edge):
@@ -364,6 +380,14 @@ class Shell:
         if edge == "bottom" and self._at_edge == "bottom":
             self._at_edge = None
             self._sync_panels()
+        elif edge in ("left", "right"):
+            self.snap_zone.close()
+
+    def snap_window(self, zone):
+        """Snap the focused window to the left or the right half."""
+        self.snap_zone.show_zone(zone)
+        actions.tile_window(zone)
+        GLib.timeout_add(600, self.snap_zone.close)
 
     def keep_alive(self, which):
         """The pointer is over a panel, so it stays visible."""
@@ -549,6 +573,30 @@ class Shell:
         if menu is None:
             menu = self.popups["wifi"]
         menu.show_items("Clipboard", rows, anchor_x=None)
+
+    def open_quick_look(self, path, mode="look"):
+        """Quick Look or Get Info for a file."""
+        if not path or not os.path.exists(path):
+            self.show_message("Quick Look", "That file is not there any more")
+            return
+        self.assistant.close()
+        self.quicklook.show_file(path, mode)
+
+    def open_file_menu(self, path):
+        """The menu of a file, the way macOS shows it in the desktop."""
+        name = os.path.basename(path)
+        rows = [
+            {"glyph": "grid", "label": "Open", "detail": "", "active": False,
+             "action": lambda: state.spawn(f"xdg-open {path}")},
+            {"glyph": "sparkles", "label": "Quick Look", "detail": "",
+             "active": False, "action": lambda: self.open_quick_look(path)},
+            {"glyph": "grid", "label": "Get Info", "detail": "", "active": False,
+             "action": lambda: self.open_quick_look(path, "info")},
+        ]
+        menu = self.popups.get("file")
+        if menu is None:
+            menu = self.popups["wifi"]
+        menu.show_items(name, rows)
 
     def show_message(self, title, message):
         """A small message, the way macOS reports that something failed."""

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 
 from . import state
@@ -303,7 +304,16 @@ def redo():
 
 
 def lock_session():
-    _run("swaylock")
+    """Lock the screen.
+
+    Returns False when there is nothing on the machine that can lock it.
+    """
+    for program in ("swaylock", "gtklock", "waylock"):
+        if shutil.which(program):
+            _run(program)
+            return True
+    _run("loginctl lock-session")
+    return False
 
 
 def suspend():

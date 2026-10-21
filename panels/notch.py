@@ -31,6 +31,14 @@ from ..macui.panel import Panel  # noqa: E402
 ART_CACHE = "/tmp/macshell-art"
 
 
+ACTIONS = [
+    ("clipboard", "clipboard", "Clipboard"),
+    ("focus", "moon", "Focus"),
+    ("screenshot", "camera", "Screenshot"),
+    ("assistant", "sparkles", "Ask"),
+]
+
+
 def _clock(seconds):
     """The time of a track, as minutes and seconds."""
     try:
@@ -333,12 +341,9 @@ class Notch(Panel):
     def _paint_actions(self, cr, width, height, pad, scale, pal):
         """The round buttons on the right of the card."""
         m = self.metrics
-        actions = [
-            ("clipboard", "clipboard", "Clipboard"),
-            ("focus", "moon", "Focus"),
-            ("screenshot", "camera", "Screenshot"),
-            ("assistant", "sparkles", "Ask"),
-        ]
+        wanted = self.metrics.config.get("notch_actions")
+        actions = [entry for entry in ACTIONS if not wanted
+                   or entry[0] in wanted]
         size = 30 * scale
         gap = 10 * scale
         x = width - pad - size * 2 - gap

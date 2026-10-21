@@ -20,6 +20,21 @@ from ..macui import actions, draw, glyphs, state  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 
+UTILITIES = [
+    ("accessibility", "accessibility"),
+    ("appearance", "moon"),
+    ("launchpad", "grid"),
+    ("spotlight", "spotlight"),
+    ("stage", "grid"),
+    ("nightshift", "moon"),
+    ("wallpaper", "display"),
+    ("settings", "grid"),
+    ("mirror", "airplay"),
+    ("display", "display"),
+    ("sound", "speaker"),
+]
+
+
 class ControlCentre(Panel):
     NAMESPACE = "mac-control-center"
 
@@ -37,6 +52,13 @@ class ControlCentre(Panel):
         self.set_content_size(int(metrics.px("cc_width")),
                               int(self._height(int(metrics.px("cc_width")))))
         self.refresh()
+
+    def _wanted_tiles(self):
+        """The tiles the user wants to see."""
+        tiles = self.metrics.config.get("cc_tiles")
+        if not tiles:
+            return [uid for uid, _glyph in UTILITIES]
+        return list(tiles)
 
     # -- state ---------------------------------------------------------------
 
@@ -129,14 +151,8 @@ class ControlCentre(Panel):
         y += circle + m.px("cc_section_gap")
 
         utilities = [
-            ("accessibility", "accessibility"),
-            ("appearance", "moon"),
-            ("launchpad", "grid"),
-            ("spotlight", "spotlight"),
-            ("stage", "grid"),
-            ("nightshift", "moon"),
-            ("wallpaper", "display"),
-            ("settings", "grid"),
+            (uid, glyph) for uid, glyph in UTILITIES
+            if uid in self._wanted_tiles()
         ]
         small = m.px("cc_small_circle")
         for index, (uid, glyph) in enumerate(utilities):
@@ -484,7 +500,11 @@ class ControlCentre(Panel):
                 state.spawn(f"powerprofilesctl set {region['id']}")
             elif kind == "session":
                 if region["id"] == "lock":
-                    actions.lock_session()
+                    if not actions.lock_session():
+                        self.shell.show_message(
+                            "Lock Screen",
+                            "Nothing on this machine can lock the screen. "
+                            "Install swaylock.")
                 else:
                     actions.log_out()
             elif kind == "exit":

@@ -128,6 +128,10 @@ class DesktopIcons(Panel):
         index = int(y // row)
         if 0 <= index < len(self._items):
             name, path = self._items[index]
+            if button == 3:
+                # the right button opens the menu of the file
+                self.shell.open_file_menu(path)
+                return True
             if os.path.isdir(path):
                 subprocess.Popen(["dolphin", path], start_new_session=True,
                                  stdout=subprocess.DEVNULL,
