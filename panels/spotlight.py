@@ -135,7 +135,12 @@ class Spotlight(Panel):
 
     def card_height(self):
         rows = len(self._results)
-        return self.field_height() + rows * 30 * self.metrics.scale
+        extra = 0
+        entry = getattr(self, "entry", None)
+        if self._results or (entry is not None and entry.get_text().strip()):
+            # the row that asks the assistant
+            extra = 30 * self.metrics.scale
+        return self.field_height() + rows * 30 * self.metrics.scale + extra
 
     def _card_rect(self, width):
         m = self.metrics
@@ -224,8 +229,8 @@ class Spotlight(Panel):
         glyphs.spotlight(cr, x + 20 * m.scale, (field_h - glyph) / 2, glyph,
                          pal["text_dim"])
 
+        row_h = 30 * m.scale
         if self._results:
-            row_h = 30 * m.scale
             for index, (label, _command, kind) in enumerate(self._results):
                 ry = field_h + index * row_h
                 if self.hover == index:
@@ -240,6 +245,24 @@ class Spotlight(Panel):
                 draw.draw_text(cr, x + w - 20 * m.scale, ry + row_h / 2,
                                caption, m.font("cc_font_size"), pal["text_faint"],
                                align="right", baseline="middle")
+
+        # the row that hands the question to the assistant
+        ask_y = field_h + len(self._results) * row_h
+        if self._results or self.entry.get_text().strip():
+            self._ask_row = (x + 6 * m.scale, ask_y, w - 12 * m.scale,
+                             row_h - 4 * m.scale)
+            if self.hover == len(self._results):
+                draw.fill_squircle(cr, x + 6 * m.scale, ask_y + 2 * m.scale,
+                                   w - 12 * m.scale, row_h - 4 * m.scale,
+                                   8 * m.scale, pal["fill_hover"], 2.0)
+            draw.draw_text(cr, x + 44 * m.scale, ask_y + row_h / 2,
+                           "Ask the assistant", m.font("menu_font_size"),
+                           pal["text_dim"], baseline="middle")
+            draw.draw_text(cr, x + w - 20 * m.scale, ask_y + row_h / 2,
+                           "Siri", m.font("cc_font_size"), pal["text_faint"],
+                           align="right", baseline="middle")
+        else:
+            self._ask_row = None
 
         # keep the entry aligned with the search glyph
         self.entry.set_size_request(int(w - 110 * m.scale),
@@ -279,4 +302,15 @@ class Spotlight(Panel):
         if 0 <= index < len(self._results):
             self._launch(self._results[index])
             return True
+        if index == len(self._results) and getattr(self, "_ask_row", None):
+            self._ask()
+            return True
         return False
+
+    def _ask(self):
+        """Hand the question to the assistant."""
+        text = self.entry.get_text().strip()
+        if not text:
+            return
+        self.close()
+        self.shell.assistant.open("ask", question=text)

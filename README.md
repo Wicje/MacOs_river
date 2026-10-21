@@ -31,6 +31,7 @@ any wlroots compositor.
 | Spaces | top right corner | the dots switch between the nine tags |
 | Tile the window | `Control+Alt+←/→` | the left or the right half, macOS Sequoia style |
 | Tile a quarter | `Control+Alt+1…4` | the four quarters of the screen |
+| Snap to an edge | click the left or right edge | the rectangle macOS draws appears and the window snaps into it |
 
 ## Install
 
@@ -118,6 +119,19 @@ The card slides down when the pointer reaches the top of the screen and
 slides away again when it leaves.  It is connected to the media player
 through MPRIS, so any player that speaks it fills the card.
 
+## The snap zone
+
+macOS Sequoia draws a translucent rectangle over the half of the screen a
+window would take when it is dragged to the edge.  The shell does the
+same: the pointer at the left or the right edge of the screen shows the
+rectangle, and a click on the edge snaps the focused window into it.
+The keyboard tiling shows the same rectangle for a moment.
+
+## The assistant in Spotlight
+
+The last row of Spotlight is *Ask the assistant*: the question is handed
+to the local model, the way Spotlight asks Siri.
+
 ## Adding programs to the dock
 
 Right click a program in the **Launchpad** and choose *Keep in Dock*.  The
@@ -142,6 +156,15 @@ was in the foreground today, the way macOS Tahoe does, and keeps it in
 * `wayland-scanner` and a C compiler for the toplevel helper
 * optional: `playerctl`, `wpctl`, `brightnessctl`, `nmcli`, `bluetoothctl`,
   `makoctl`, `wl-clipboard`, `wtype`, `grim`, `ollama`
+
+## Arranging the shell
+
+**System Settings → Control Centre** holds a switch for every tile of
+the Control Centre and every button of the notch, so the shell can be
+arranged the way you like it.
+
+**System Settings → Desktop & Dock** decides what the dock and the notch
+do: *Always*, *Desktop* or *Auto*.
 
 ## The appearance
 
