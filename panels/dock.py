@@ -39,7 +39,10 @@ DEFAULT_APPS = [
     {"id": "mpv", "label": "mpv", "cmd": "mpv", "app": "mpv"},
     {"id": "audacity", "label": "Audacity", "cmd": "audacity", "app": "audacity"},
     {"id": "obs", "label": "OBS Studio", "cmd": "obs", "app": "obs"},
-    {"id": "spotify", "label": "Spotify", "cmd": "spotify", "app": "spotify"},
+    # the native player runs in a terminal; the official client is
+    # "spotify" and comes from the AUR
+    {"id": "spotify", "label": "Spotify", "cmd": "foot -e spotify_player",
+     "app": "spotify_player"},
     {"id": "steam", "label": "Steam", "cmd": "steam", "app": "steam"},
 ]
 
@@ -533,9 +536,12 @@ class Dock(Panel):
 
     def _installed(self, command):
         """True when the program of a dock item is on the machine."""
-        if os.path.isabs(command):
-            return os.path.exists(command)
-        return shutil.which(command) is not None
+        program = command.split()[0] if command else ""
+        if not program:
+            return False
+        if os.path.isabs(program):
+            return os.path.exists(program)
+        return shutil.which(program) is not None
 
     def _report_failure(self, app, key, error_file):
         """Tell the user why an application did not come up."""

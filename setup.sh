@@ -40,7 +40,7 @@ APPS=(ghostty yazi foot mpv vlc dolphin ffmpeg thunar gimp)
 PACMAN_PKGS=(python python-gobject pycairo gtk3 playerctl wpcli brightnessctl
              networkmanager bluez mako wl-clipboard wtype cliphist grim
              wayland-scanner gcc ghostty yazi foot mpv vlc dolphin dolphin-plugins
-             ffmpeg thunar gimp qt5-wayland qt6-wayland
+             ffmpeg thunar gimp obs-studio qt5-wayland qt6-wayland
              xdg-desktop-portal-gtk libadwaita
              gvfs-mtp gvfs-gphoto2 gvfs-smb
              whisper-cpp)
@@ -48,11 +48,12 @@ PACMAN_PKGS=(python python-gobject pycairo gtk3 playerctl wpcli brightnessctl
 APT_PKGS=(python3 python3-gi python3-cairo gir1.2-gtk-3.0 playerctl wpctl
           brightnessctl network-manager bluez mako wl-clipboard wtype
           cliphist grim wayland-scanner build-essential ghostty yazi foot
-          mpv vlc dolphin ffmpeg gimp)
+          mpv vlc dolphin ffmpeg gimp obs-studio)
 
 DNF_PKGS=(python3 python3-gobject pycairo gtk3 playerctl wpctl brightnessctl
           NetworkManager bluez mako wl-clipboard wtype cliphist grim
-          wayland-scanner gcc ghostty yazi foot mpv vlc dolphin ffmpeg gimp)
+          wayland-scanner gcc ghostty yazi foot mpv vlc dolphin ffmpeg gimp
+          obs-studio)
 
 # the applications that live in the AUR
 AUR_PKGS=(spotify steam)
