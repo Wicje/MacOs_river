@@ -27,15 +27,15 @@ DEFAULT_APPS = [
     {"id": "launchpad", "label": "Launchpad", "cmd": "", "special": "launchpad",
      "glyph": "grid", "app": ""},
     {"id": "firefox", "label": "Firefox", "cmd": "firefox", "app": "firefox"},
-    {"id": "chromium", "label": "Chromium", "cmd": "chromium", "app": "chromium"},
+    {"id": "continua", "label": "Continua",
+     "cmd": os.path.expanduser("~/.local/bin/continua-browser"),
+     "app": "continua"},
     {"id": "dolphin", "label": "Files", "cmd": "dolphin", "app": "dolphin"},
-    {"id": "yazi", "label": "Yazi", "cmd": "yazi", "app": "yazi"},
     {"id": "terminal", "label": "Terminal", "cmd": "foot", "app": "foot"},
     {"id": "ghostty", "label": "Ghostty", "cmd": "ghostty", "app": "ghostty"},
     {"id": "vscode", "label": "Visual Studio Code", "cmd": "code", "app": "code"},
     {"id": "gimp", "label": "GIMP", "cmd": "gimp", "app": "gimp"},
     {"id": "mpv", "label": "mpv", "cmd": "mpv", "app": "mpv"},
-    {"id": "vlc", "label": "VLC", "cmd": "vlc", "app": "vlc"},
     {"id": "audacity", "label": "Audacity", "cmd": "audacity", "app": "audacity"},
     {"id": "obs", "label": "OBS Studio", "cmd": "obs", "app": "obs"},
     {"id": "spotify", "label": "Spotify", "cmd": "spotify", "app": "spotify"},
@@ -394,7 +394,7 @@ class Dock(Panel):
         if name in self._icons:
             return self._icons[name]
         pixbuf = None
-        path = apps.icon_path(name)
+        path = apps.icon_for_app(name)
         if path:
             try:
                 pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)

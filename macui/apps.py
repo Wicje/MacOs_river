@@ -74,6 +74,28 @@ def icon_path(name):
     return None
 
 
+def icon_for_app(name):
+    """The icon of a desktop entry, by its name or by its id.
+
+    The icon of a program is often a path of its own (an AppImage draws
+    its icon from the file), so the desktop entry is asked first and the
+    icon theme second.
+    """
+    if not name:
+        return None
+    key = name.lower()
+    for entry in _read_entries(block=False):
+        if key in (entry["id"].lower(), entry["name"].lower()):
+            icon = entry.get("icon") or ""
+            if os.path.isabs(icon) and os.path.exists(icon):
+                return icon
+            found = icon_path(icon)
+            if found:
+                return found
+            break
+    return icon_path(name)
+
+
 def _read_entries(block=True):
     """Parse every desktop entry."""
     entries = {}
