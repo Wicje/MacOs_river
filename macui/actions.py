@@ -159,13 +159,16 @@ def tile_window(zone="left"):
 
         tile:left        the left half
         tile:top-right   the quarter in the top right corner
+
+    The window is given the size of the zone it goes to, so tiling twice
+    lands in the same place: a window that was resized by a number of
+    pixels would end up a sliver the second time around.
     """
     if is_sway():
         _run("swaymsg move position 0 0")
         return
     width, height = _screen_size()
-    half_w, half_w_gap = width // 2, 0
-    half_h = height // 2
+    half_w, half_h = width // 2, height // 2
 
     edges = []
     if "left" in zone:
@@ -176,12 +179,14 @@ def tile_window(zone="left"):
         edges.append("top")
     if "bottom" in zone:
         edges.append("bottom")
+    if not edges:
+        return
     for edge in edges:
         _run(f"riverctl snap {edge}")
-    if "left" in zone or "right" in zone:
-        _run(f"riverctl resize horizontal -{half_w}")
-    if "top" in zone or "bottom" in zone:
-        _run(f"riverctl resize vertical -{half_h}")
+    tile_w = half_w if ("left" in zone or "right" in zone) else width
+    tile_h = half_h if ("top" in zone or "bottom" in zone) else height
+    # the extent keeps the corner the window was snapped to
+    _run(f"riverctl resize set -extent {tile_w}x{tile_h}")
 
 
 def zoom_window():

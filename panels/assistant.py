@@ -21,7 +21,7 @@ gi.require_version("Gdk", "3.0")
 
 from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
-from ..macui import ai, draw  # noqa: E402
+from ..macui import ai, draw, glyphs  # noqa: E402
 from ..macui import panel  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 

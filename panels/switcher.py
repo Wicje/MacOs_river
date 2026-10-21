@@ -126,13 +126,8 @@ class Switcher(Panel):
     def _icon_for(self, app_id):
         if app_id in self._icons:
             return self._icons[app_id]
-        pixbuf = None
         path = apps.icon_path(app_id)
-        if path:
-            try:
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
-            except Exception:
-                pixbuf = None
+        pixbuf = draw.load_icon(path) if path else None
         self._icons[app_id] = pixbuf
         return pixbuf
 

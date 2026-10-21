@@ -5,8 +5,9 @@ it receives tell the shell where the mouse is, which is what the auto
 hiding dock and notch need: the panel only appears when the pointer
 reaches the edge of the screen.
 
-The strips on the left and the right tell the shell that a window could
-be snapped there, which is what the snap zone of macOS Sequoia shows.
+There is no strip on the left and the right: those edges belong to the
+applications, and a window that is dragged to the edge is the business
+of the compositor, not of a panel that would swallow the clicks.
 """
 
 from __future__ import annotations
@@ -53,15 +54,12 @@ class Sensor(Panel):
 
     def on_motion(self, x, y):
         screen_h = self.metrics.height or 768
-        screen_w = self.metrics.width or 1366
         if self.edge == "top":
             absolute = y
         elif self.edge == "bottom":
             absolute = screen_h - STRIP + y
-        elif self.edge == "left":
-            absolute = x
         else:
-            absolute = screen_w - STRIP + x
+            absolute = x
         self.shell.pointer_moved(self.edge, absolute)
         return False
 
@@ -71,8 +69,4 @@ class Sensor(Panel):
         return False
 
     def on_click(self, x, y, button):
-        """A click on the edge snaps the window to that side."""
-        if self.edge in ("left", "right"):
-            self.shell.snap_window(self.edge)
-            return True
         return False

@@ -30,12 +30,7 @@ def _icon_for(app_id):
     if app_id in _icons:
         return _icons[app_id]
     path = apps.icon_path(app_id)
-    pixbuf = None
-    if path:
-        try:
-            pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
-        except Exception:
-            pixbuf = None
+    pixbuf = draw.load_icon(path) if path else None
     _icons[app_id] = pixbuf
     return pixbuf
 

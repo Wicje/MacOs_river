@@ -207,10 +207,7 @@ class Launchpad(Panel):
             app["icon_path"] = path
         if not path:
             return None
-        try:
-            return GdkPixbuf.Pixbuf.new_from_file(path)
-        except Exception:
-            return None
+        return draw.load_icon(path)
 
     # -- input ---------------------------------------------------------------
 

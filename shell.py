@@ -100,9 +100,7 @@ class Shell:
         # notch; the strips are mapped after the panels, so they always
         # get the pointer
         self.sensors = [Sensor(self.metrics, self, "top"),
-                        Sensor(self.metrics, self, "bottom"),
-                        Sensor(self.metrics, self, "left"),
-                        Sensor(self.metrics, self, "right")]
+                        Sensor(self.metrics, self, "bottom")]
         self.snap_zone = SnapZone(self.metrics, self)
         self._notch_until = 0.0
         self._dock_until = 0.0
@@ -254,9 +252,7 @@ class Shell:
             self.stage_manager.toggle()
         elif command.startswith("tile:"):
             zone = command.split(":", 1)[1]
-            self.snap_zone.show_zone(zone if zone in ("left", "right") else "")
-            actions.tile_window(zone)
-            GLib.timeout_add(500, self.snap_zone.close)
+            self.snap_window(zone if zone in ("left", "right") else "")
         elif command == "ask":
             self.assistant.open("ask")
         elif command == "write":
@@ -298,6 +294,12 @@ class Shell:
             from .panels import dock as dock_module
             if dock_module.APPS:
                 self.open_dock_menu(dock_module.APPS[1], 1)
+        elif command.startswith("dockclick:"):
+            try:
+                index = int(command.split(":", 1)[1])
+            except ValueError:
+                index = -1
+            self.dock.activate_index(index)
         elif command.startswith("popup:"):
             self.open_popup(command.split(":", 1)[1])
         elif command == "close":
@@ -352,7 +354,6 @@ class Shell:
     def pointer_moved(self, edge, absolute_y):
         """The pointer reached an edge of the screen."""
         screen_h = self.metrics.height or 768
-        screen_w = self.metrics.width or 1366
         now = time.monotonic()
         if edge == "top":
             if absolute_y <= 6:
@@ -366,22 +367,14 @@ class Shell:
                 self._at_edge = "bottom"
             else:
                 self._at_edge = None
-        else:
-            # the left and the right edge show where a window would snap
-            limit = 6
-            if edge == "left" and absolute_y <= limit:
-                self.snap_zone.show_zone("left")
-            elif edge == "right" and absolute_y >= screen_w - limit:
-                self.snap_zone.show_zone("right")
         self._sync_panels()
 
     def pointer_left(self, edge):
-        """The pointer left the edge of the screen."""
+        """The pointer left an edge of the screen."""
         if edge == "bottom" and self._at_edge == "bottom":
             self._at_edge = None
             self._sync_panels()
-        elif edge in ("left", "right"):
-            self.snap_zone.close()
+
 
     def snap_window(self, zone):
         """Snap the focused window to the left or the right half."""
@@ -441,6 +434,9 @@ class Shell:
             elif self._over_dock or self._at_edge == "bottom":
                 # the pointer is at the bottom of the screen or over the
                 # dock: it stays there
+                pass
+            elif self._dock_until > now:
+                # the dock was asked for a moment ago
                 pass
             elif mode == "desktop" and not self._app_in_front():
                 # the desktop shows: the dock belongs on the screen

@@ -24,6 +24,7 @@ from gi.repository import Gdk, GdkPixbuf, Pango, PangoCairo  # noqa: E402
 ICON_DIR = os.path.expanduser("~/.local/share/macshell/icons")
 
 _pixbuf_cache: dict[str, GdkPixbuf.Pixbuf] = {}
+_icon_cache: dict = {}
 
 
 # --- paths -----------------------------------------------------------------
@@ -282,6 +283,53 @@ def load_pixbuf(name):
         return None
     _pixbuf_cache[name] = pb
     return pb
+
+
+def load_icon(path, size=128):
+    """Load an icon file as a pixbuf.
+
+    The icon themes hand out SVG files as well, and the pixbuf loader of
+    this machine has no SVG support, so the vector icons are rendered
+    with librsvg instead of going missing.
+    """
+    if not path:
+        return None
+    key = (path, size)
+    if key in _icon_cache:
+        return _icon_cache[key]
+    pixbuf = None
+    if path.lower().endswith(".svg"):
+        pixbuf = _render_svg(path, size)
+    else:
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
+        except Exception:  # noqa: BLE001
+            pixbuf = None
+    _icon_cache[key] = pixbuf
+    return pixbuf
+
+
+def _render_svg(path, size):
+    """Render an SVG file into a pixbuf."""
+    try:
+        gi.require_version("Rsvg", "2.0")
+        from gi.repository import Rsvg
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        handle = Rsvg.Handle.new_from_file(path)
+        dimensions = handle.get_dimensions()
+        if not dimensions.width or not dimensions.height:
+            return None
+        width = int(size)
+        height = max(1, int(size * dimensions.height / dimensions.width))
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+        cr = cairo.Context(surface)
+        cr.scale(width / dimensions.width, width / dimensions.width)
+        handle.render_cairo(cr)
+        return Gdk.pixbuf_get_from_surface(surface, 0, 0, width, height)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def draw_icon(cr, name, x, y, size):

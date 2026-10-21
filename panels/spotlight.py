@@ -10,7 +10,6 @@ from __future__ import annotations
 import ast
 import operator
 import os
-import re
 import subprocess
 
 import gi
@@ -20,56 +19,11 @@ gi.require_version("Gdk", "3.0")
 
 from gi.repository import Gdk, Gtk  # noqa: E402
 
-from ..macui import draw, glyphs  # noqa: E402
+from ..macui import apps, draw, glyphs  # noqa: E402
 from ..macui import panel as panel_module  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
-DESKTOP_DIRS = (
-    "~/.local/share/applications",
-    "/usr/share/applications",
-    "/usr/local/share/applications",
-)
-
 MAX_RESULTS = 7
-
-
-def _desktop_entries():
-    """(name, command) for every installed application."""
-    entries = []
-    for directory in DESKTOP_DIRS:
-        directory = os.path.expanduser(directory)
-        if not os.path.isdir(directory):
-            continue
-        for name in sorted(os.listdir(directory)):
-            if not name.endswith(".desktop"):
-                continue
-            path = os.path.join(directory, name)
-            try:
-                with open(path, encoding="utf-8", errors="replace") as fh:
-                    text = fh.read()
-            except OSError:
-                continue
-            if "NoDisplay=true" in text or "Hidden=true" in text:
-                continue
-            label = ""
-            command = ""
-            for line in text.splitlines():
-                if line.startswith("Name=") and not label:
-                    label = line[5:].strip()
-                elif line.startswith("Exec="):
-                    command = line[5:].strip()
-                elif line.startswith("NoDisplay=true") or line.startswith("Hidden=true"):
-                    label = ""
-                    break
-            if label and command:
-                entries.append((label, command))
-    return entries
-
-
-def _clean_exec(command):
-    """Strip the field codes desktop files use."""
-    command = re.sub(r"%[fFuUdDnNickvm]", "", command)
-    return " ".join(command.split())
 
 
 class Spotlight(Panel):
@@ -85,7 +39,6 @@ class Spotlight(Panel):
         )
         self.shell = shell
         self._results: list = []
-        self._apps = None
         self.hover = -1
         self.set_content_size(-1, self.card_height())
 
@@ -153,13 +106,12 @@ class Spotlight(Panel):
     def _search(self, text):
         if not text:
             return []
-        if self._apps is None:
-            self._apps = _desktop_entries()
         needle = text.lower()
         results = []
-        for label, command in self._apps:
+        for entry in apps.all_applications():
+            label = entry.get("name") or ""
             if needle in label.lower():
-                results.append((label, command, "app"))
+                results.append((label, entry.get("exec") or "", "app"))
         home = os.path.expanduser("~")
         try:
             for entry in sorted(os.listdir(home))[:400]:
@@ -195,7 +147,7 @@ class Spotlight(Panel):
             self.close()
             return
         if kind == "app":
-            subprocess.Popen([_clean_exec(command)], start_new_session=True,
+            subprocess.Popen(command, shell=True, start_new_session=True,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
             subprocess.Popen(["dolphin", command], start_new_session=True,

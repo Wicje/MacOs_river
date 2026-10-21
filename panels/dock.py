@@ -95,6 +95,59 @@ TRASH = {"id": "trash", "label": "Trash", "cmd": "dolphin trash:///"}
 
 TOOLTIP_SPACE = 30
 
+# how far the pointer has to be from an icon for it to stop growing
+GROW_SPAN = 2.2
+
+
+def _row_width(count, base, gap, pad_x):
+    """The width of a row of icons at rest."""
+    if count <= 0:
+        return 0.0
+    return count * base + (count - 1) * gap + pad_x * 2
+
+
+def _growth(base, top, gap):
+    """How much wider the row gets when the icons grow.
+
+    The icons around the pointer swell and push their neighbours aside, so
+    the row is wider than it is at rest.  The surface has to be wide
+    enough for the widest row, or the glass is cut off and the icons at
+    the end of the row hang outside the shelf.
+    """
+    span = base * GROW_SPAN
+    step = base + gap
+    extra = 0.0
+    for distance in (0.0, step):
+        if distance < span:
+            t = 1.0 - distance / span
+            extra += (top - base) * t * t * (3 - 2 * t)
+    return extra * 2
+
+
+def _measure(metrics, count):
+    """The size of the icons and the width of the dock.
+
+    The dock grows with the number of items, and the icons shrink when the
+    row would not fit on the screen.
+    """
+    m = metrics
+    count = max(1, count)
+    base = m.px("dock_icon")
+    gap = m.px("dock_gap")
+    pad_x = m.px("dock_pad_x")
+    top = m.px("dock_icon_max")
+    width = _row_width(count, base, gap, pad_x) + _growth(base, top, gap)
+    limit = max(240, (m.width or 1366) - 24)
+    if width > limit and width > 0:
+        factor = limit / width
+        base *= factor
+        gap *= factor
+        pad_x *= factor
+        top = base + (top - m.px("dock_icon")) * factor
+        width = _row_width(count, base, gap, pad_x) + _growth(base, top, gap)
+    return {"base": base, "gap": gap, "pad_x": pad_x, "top": top,
+            "width": width}
+
 
 class Dock(Panel):
     NAMESPACE = "mac-dock"
@@ -102,6 +155,9 @@ class Dock(Panel):
     def __init__(self, metrics, shell):
         m = metrics
         self._base_margin = int(m.px("dock_margin_bottom"))
+        self._pad_y = m.px("dock_pad_y")
+        self._items_cache = self._build_items()
+        self._size = _measure(metrics, len(self._items_cache))
         # the shelf slides inside the surface, so the surface itself stays
         # on the screen and the compositor keeps sending it frames
         self._slide_distance = 4 + self.shelf_height(metrics)
@@ -119,7 +175,7 @@ class Dock(Panel):
         self._layout: list = []
         self._shelf = (0, 0, 0, 0)
         self._offset = self._slide_distance
-        self._sizes = [metrics.px("dock_icon")] * len(self._items())
+        self._sizes = [self._size["base"]] * len(self._items_cache)
         self._targets = list(self._sizes)
         self._animating = False
         self._bounce = -1
@@ -131,10 +187,11 @@ class Dock(Panel):
         screen = metrics.width or width
         self.set_horizontal_offset(int((screen - width) / 2))
         self._running = self._detect_running()
+        self._windows = self._window_map()
 
     # -- running apps --------------------------------------------------------
 
-    def _items(self):
+    def _build_items(self):
         """The dock's items: the programs, the recent ones and the trash.
 
         macOS keeps the last programs in front in a section of its own,
@@ -148,13 +205,31 @@ class Dock(Panel):
             known.add(app_id)
             items.append({
                 "id": app_id,
-                "label": state.FRIENDLY_NAMES.get(app_id, app_id),
+                "label": state.friendly_name(app_id),
                 "cmd": "",
                 "app": app_id,
                 "recent": True,
             })
         items.append(TRASH)
         return items
+
+    def _items(self):
+        """The items of the dock, as they are right now.
+
+        The list is kept as it is: the sizes of the icons are worked out
+        for it, and a list that changes halfway would leave the icons and
+        the shelf disagreeing about each other.
+        """
+        return self._items_cache
+
+    def _window_map(self):
+        """The open windows, by the id of their application."""
+        windows = {}
+        for entry in state.toplevels():
+            app_id = (entry.get("app_id") or "").lower()
+            if app_id and app_id not in windows:
+                windows[app_id] = entry
+        return windows
 
     def _detect_running(self):
         """App ids of the windows that are currently open."""
@@ -165,33 +240,46 @@ class Dock(Panel):
 
     def refresh_running(self):
         self._running = self._detect_running()
-        count = len(self._items())
-        if count != len(self._sizes):
-            self._sizes = [self.metrics.px("dock_icon")] * count
+        self._windows = self._window_map()
+        items = self._build_items()
+        if items != self._items_cache:
+            # a program came back into the recent section: the row is a
+            # different length now, so the icons and the shelf are measured
+            # again
+            self._items_cache = items
+            self._size = _measure(self.metrics, len(items))
+            self._sizes = [self._size["base"]] * len(items)
             self._targets = list(self._sizes)
+            self._resize()
         self.redraw()
 
     def reload_apps(self):
         """Pick up a changed list of dock items."""
         global APPS
         APPS = _load_apps()
-        count = len(self._items())
-        self._sizes = [self.metrics.px("dock_icon")] * count
+        self._items_cache = self._build_items()
+        self._size = _measure(self.metrics, len(self._items_cache))
+        self._sizes = [self._size["base"]] * len(self._items_cache)
         self._targets = list(self._sizes)
-        self.set_content_size(self.panel_width(), self.panel_height())
+        self._resize()
+
+    def _resize(self):
+        """Give the surface the size the row needs and centre it."""
+        width = self.panel_width()
+        self.set_content_size(width, self.panel_height())
+        screen = self.metrics.width or width
+        self.set_horizontal_offset(int((screen - width) / 2))
         self.redraw()
 
     # -- geometry ------------------------------------------------------------
 
     def panel_height(self, m=None):
-        m = m or self.metrics
-        shelf_h = m.px("dock_icon") + m.px("dock_pad_y") * 2
-        return int(shelf_h + (m.px("dock_icon_max") - m.px("dock_icon"))
+        shelf_h = self._size["base"] + self._pad_y * 2
+        return int(shelf_h + (self._size["top"] - self._size["base"])
                    + TOOLTIP_SPACE)
 
     def shelf_height(self, m=None):
-        m = m or self.metrics
-        return m.px("dock_icon") + m.px("dock_pad_y") * 2
+        return self._size["base"] + self._pad_y * 2
 
     def panel_width(self):
         """Width of the dock surface.
@@ -200,13 +288,7 @@ class Dock(Panel):
         to grow), so clicks outside the dock still reach the windows
         underneath.
         """
-        m = self.metrics
-        base = m.px("dock_icon")
-        gap = m.px("dock_gap")
-        pad = m.px("dock_pad_x")
-        count = len(APPS) + 1
-        resting = base * count + gap * (count - 1)
-        return int(resting + pad * 2 + m.px("dock_icon_max") * 0.6)
+        return int(self._size["width"])
 
     def _compute_layout(self):
         """Icon geometry for the current pointer position.
@@ -214,14 +296,12 @@ class Dock(Panel):
         The icon sizes are eased towards their targets by _step(), so this
         only works out where the icons sit and how big they want to be.
         """
-        m = self.metrics
-        base = m.px("dock_icon")
-        gap = m.px("dock_gap")
-        pad_x = m.px("dock_pad_x")
+        gap = self._size["gap"]
+        pad_x = self._size["pad_x"]
 
         width, height = self.content_size()
         if width <= 0:
-            width = m.width or 1366
+            width = self.metrics.width or 1366
 
         sizes = self._sizes
 
@@ -241,7 +321,7 @@ class Dock(Panel):
         # the shelf sits at the bottom of the surface and slides down into
         # it when the dock hides
         shelf_y = height - shelf_h - self._base_margin + self._offset
-        icon_bottom = shelf_y + shelf_h - m.px("dock_pad_y")
+        icon_bottom = shelf_y + shelf_h - self._pad_y
 
         layout = []
         for index, size in enumerate(sizes):
@@ -265,16 +345,15 @@ class Dock(Panel):
         grow also move the ones next to them -- that is what gives macOS
         its elastic feel.
         """
-        m = self.metrics
-        base = m.px("dock_icon")
-        top = m.px("dock_icon_max")
-        gap = m.px("dock_gap")
-        pad_x = m.px("dock_pad_x")
-        count = len(APPS) + 1
+        base = self._size["base"]
+        top = self._size["top"]
+        gap = self._size["gap"]
+        pad_x = self._size["pad_x"]
+        count = len(self._sizes)
 
         width, _ = self.content_size()
         if width <= 0:
-            width = m.width or 1366
+            width = self.metrics.width or 1366
 
         # resting geometry
         centres = []
@@ -282,7 +361,7 @@ class Dock(Panel):
         for _ in range(count):
             centres.append(x + base / 2)
             x += base + gap
-        shelf_w = centres[-1] + base / 2 + pad_x * 2
+        shelf_w = centres[-1] + base / 2 + pad_x * 2 if centres else 0.0
         shelf_x = (width - shelf_w) / 2
 
         # the pointer in the dock's own coordinate space
@@ -293,7 +372,7 @@ class Dock(Panel):
             sizes = []
             for index in range(count):
                 dist = abs(local - centres[index])
-                span = base * 2.2
+                span = base * GROW_SPAN
                 if dist < span:
                     t = 1.0 - dist / span
                     eased = t * t * (3 - 2 * t)
@@ -309,10 +388,9 @@ class Dock(Panel):
         return targets
 
     def _update_targets(self):
-        m = self.metrics
         pointer_x = self.pointer[0]
         if pointer_x < 0:
-            targets = [m.px("dock_icon")] * (len(APPS) + 1)
+            targets = [self._size["base"]] * len(self._sizes)
         else:
             targets = self._magnified(pointer_x)
         if targets != self._targets:
@@ -403,7 +481,7 @@ class Dock(Panel):
         for index, item in enumerate(items):
             if index and (item.get("recent") or index == len(items) - 1):
                 sep_x = layout[index - 1]["centre"] + layout[index - 1]["size"] / 2
-                sep_x += m.px("dock_gap") * 0.5
+                sep_x += self._size["gap"] * 0.5
                 draw.fill_squircle(cr, sep_x, shelf_y + shelf_h * 0.24, 1,
                                    shelf_h * 0.52, 0.5, pal["separator"], 2.0)
 
@@ -420,6 +498,8 @@ class Dock(Panel):
         if draw.draw_icon(cr, app["id"], x, y, size):
             return
         pixbuf = self._system_icon(app.get("app") or app["id"])
+        if pixbuf is None and app.get("recent"):
+            pixbuf = self._recent_icon(app)
         if pixbuf is None:
             draw.fill_squircle(cr, x + size * 0.18, y + size * 0.1,
                                size * 0.64, size * 0.7, size * 0.1,
@@ -445,11 +525,28 @@ class Dock(Panel):
         pixbuf = None
         path = apps.icon_for_app(name)
         if path:
-            try:
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
-            except Exception:  # noqa: BLE001
-                pixbuf = None
+            pixbuf = draw.load_icon(path)
         self._icons[name] = pixbuf
+        return pixbuf
+
+    def _recent_icon(self, app):
+        """The icon of a program of the recent section.
+
+        The compositor and the desktop files do not always call a
+        program the same, so the friendly name is asked as well.
+        """
+        key = app.get("app") or app.get("id") or ""
+        pixbuf = self._system_icon(key)
+        if pixbuf is not None:
+            return pixbuf
+        label = app.get("label") or ""
+        if not label:
+            return None
+        if label in self._icons:
+            return self._icons[label]
+        path = apps.icon_for_app(label)
+        pixbuf = draw.load_icon(path) if path else None
+        self._icons[label] = pixbuf
         return pixbuf
 
     def _paint_tooltip(self, cr, item):
@@ -474,13 +571,36 @@ class Dock(Panel):
                        align="center", baseline="middle")
 
     def _is_running(self, app):
-        key = (app.get("app") or "").lower()
-        if not key or not self._running:
+        """True when the program of a dock item has a window open.
+
+        The id of a window and the id of a program are not always the
+        same: the terminal is "foot" in the dock and "footclient" in the
+        compositor, and Code is "code" in the dock and "code-oss" on the
+        machine.  The friendly names are what tie them together.
+        """
+        key = (app.get("app") or app.get("id") or "").lower()
+        label = (app.get("label") or "").lower()
+        if not key and not label:
             return False
         for running in self._running:
-            if running == key or key in running or running in key:
+            if key and running == key:
+                return True
+            friendly = state.FRIENDLY_NAMES.get(running, "").lower()
+            if label and friendly and friendly == label:
                 return True
         return False
+
+    def _window_of(self, app):
+        """The open window of a dock item."""
+        key = (app.get("app") or app.get("id") or "").lower()
+        label = (app.get("label") or "").lower()
+        for app_id, entry in self._windows.items():
+            if key and app_id == key:
+                return entry
+            friendly = state.FRIENDLY_NAMES.get(app_id, "").lower()
+            if label and friendly and friendly == label:
+                return entry
+        return None
 
     # -- visibility ----------------------------------------------------------
 
@@ -510,9 +630,8 @@ class Dock(Panel):
         shelf_x, shelf_y, shelf_w, shelf_h = self._shelf
         if shelf_w <= 0:
             return None
-        m = self.metrics
-        icon_bottom = shelf_y + shelf_h - m.px("dock_pad_y")
-        top = icon_bottom - m.px("dock_icon_max")
+        icon_bottom = shelf_y + shelf_h - self._pad_y
+        top = icon_bottom - self._size["top"]
         # the shelf slides out of the surface, and the region with it
         return [(shelf_x, top, shelf_w, icon_bottom - top)]
 
@@ -542,6 +661,17 @@ class Dock(Panel):
                 return True
         return False
 
+    def activate_index(self, index):
+        """Click a dock icon by its number.
+
+        The command fifo uses it to try a dock item out without a mouse.
+        """
+        items = self._items()
+        if 0 <= index < len(items):
+            self._activate(items[index], index)
+            return True
+        return False
+
     def _activate(self, app, index=-1):
         """Launch an app, or focus it when it is already running.
 
@@ -552,9 +682,12 @@ class Dock(Panel):
             self.shell.open_launchpad()
             return
         key = (app.get("app") or "").lower()
-        if key and self._is_running(app):
-            if state.activate_app(key):
-                return
+        entry = self._window_of(app)
+        if entry is not None:
+            # the program is already open: raise its window instead of
+            # starting a second copy of it
+            state.raise_window(entry.get("title") or "")
+            return
         command = app.get("cmd") or ""
         if not command and key:
             # a program of the recent section: find it on the machine
@@ -571,7 +704,7 @@ class Dock(Panel):
                 f"{app.get('label', 'This program')} is not installed")
             return
         # the error of a program that refuses to start is worth showing
-        error_file = "/tmp/macshell-launch.err"
+        error_file = f"/tmp/macshell-launch-{os.getpid()}.err"
         try:
             with open(error_file, "w"):
                 pass
@@ -584,7 +717,8 @@ class Dock(Panel):
         self._bounce = index
         self._bounce_started = time.monotonic()
         self._animate()
-        GLib.timeout_add(2500, self._report_failure, app, key, error_file)
+        GLib.timeout_add(2000, self._report_failure, app, key, error_file)
+        GLib.timeout_add(9000, self._report_slow, app, key)
 
     def _installed(self, command):
         """True when the program of a dock item is on the machine."""
@@ -596,9 +730,12 @@ class Dock(Panel):
         return shutil.which(program) is not None
 
     def _report_failure(self, app, key, error_file):
-        """Tell the user why an application did not come up."""
-        if key and self._is_running(app):
-            return False
+        """Tell the user why an application did not come up.
+
+        Only a program that said something is worth a message: an
+        application that is still starting has not failed, and on a slow
+        machine it often needs a few seconds to show its first window.
+        """
         message = ""
         try:
             with open(error_file, encoding="utf-8", errors="replace") as fh:
@@ -606,9 +743,18 @@ class Dock(Panel):
         except OSError:
             message = ""
         if not message:
-            message = f"{app.get('label', 'The program')} did not start"
+            return False
         message = message.splitlines()[0][:120]
         self.shell.show_message(app.get("label", "Application"), message)
+        return False
+
+    def _report_slow(self, app, key):
+        """A program that is still starting after a while."""
+        if self._is_running(app):
+            return False
+        self.shell.show_message(
+            app.get("label", "Application"),
+            f"{app.get('label', 'The program')} is still starting")
         return False
 
     def on_leave(self):

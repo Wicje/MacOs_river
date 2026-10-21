@@ -14,6 +14,20 @@
     "notch_mode": "auto",
     "glass_opacity": 1.28,
     "glass_tint": 0.04,
+    "cc_tiles": [
+        "accessibility",
+        "appearance",
+        "nightshift",
+        "wallpaper",
+        "settings",
+        "mirror",
+        "display",
+        "sound",
+        "spotlight",
+        "stage",
+        "launchpad"
+    ],
+    "notch_actions": [],
     "mute": true,
     "dnd": true
 }

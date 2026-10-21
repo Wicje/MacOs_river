@@ -163,10 +163,7 @@ class StageManager(Panel):
         path = apps.icon_path(app_id)
         if not path:
             return None
-        try:
-            return GdkPixbuf.Pixbuf.new_from_file(path)
-        except Exception:
-            return None
+        return draw.load_icon(path)
 
     # -- input ---------------------------------------------------------------
 

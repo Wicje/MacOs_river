@@ -13,6 +13,8 @@ import subprocess
 import threading
 import time
 
+from . import apps
+
 CACHE = "/tmp/macshell-state"
 THEME_FILE = os.path.expanduser("~/.config/macshell/.theme")
 
@@ -308,25 +310,42 @@ def window_list():
 def activate_app(app_id):
     """Bring the window of an application to the front.
 
-    Returns True when a window was found and activated.
+    Returns True when a window was found and activated.  The work happens
+    in a thread, so the panel that asked for it keeps drawing.
     """
     app_id = (app_id or "").lower()
     if not app_id:
         return False
-    for entry in _toplevels():
+    for entry in toplevels():
         if (entry.get("app_id") or "").lower() == app_id:
             title = entry.get("title") or ""
             if not title:
                 return False
-            try:
-                subprocess.run(
-                    [os.path.expanduser("~/.local/bin/macshell-toplevels"),
-                     "--activate", title],
-                    capture_output=True, timeout=5)
-            except (OSError, subprocess.SubprocessError):
-                return False
-            return True
+            return raise_window(title)
     return False
+
+
+def raise_window(title):
+    """Raise a window by its title.
+
+    The helper talks to the compositor, which takes a moment, so the work
+    happens in a thread: the panels must not wait for it.
+    """
+    title = (title or "").strip()
+    if not title:
+        return False
+
+    def work():
+        try:
+            subprocess.run(
+                [os.path.expanduser("~/.local/bin/macshell-toplevels"),
+                 "--activate", title],
+                capture_output=True, timeout=8)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    threading.Thread(target=work, daemon=True).start()
+    return True
 
 
 FRIENDLY_NAMES = {
@@ -362,6 +381,23 @@ FRIENDLY_NAMES = {
     "zoom": "Zoom",
     "Element": "Element",
 }
+
+
+def friendly_name(app_id):
+    """A readable name for an application id.
+
+    The compositor calls the applications by their own name, which is
+    not always the name the desktop knows them by, so the desktop files
+    are asked as well.
+    """
+    if not app_id:
+        return ""
+    if app_id in FRIENDLY_NAMES:
+        return FRIENDLY_NAMES[app_id]
+    name = apps.name_for_id(app_id)
+    if name:
+        return name
+    return app_id
 
 
 def focused_app_id():
