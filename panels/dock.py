@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import shutil
 import time
 
 import gi
@@ -506,13 +507,51 @@ class Dock(Panel):
         if key and self._is_running(app):
             if state.activate_app(key):
                 return
-        state.spawn(app["cmd"])
+        command = app.get("cmd") or ""
+        if not command:
+            return
+        if not self._installed(command):
+            self.shell.show_message(
+                app.get("label", "Application"),
+                f"{app.get('label', 'This program')} is not installed")
+            return
+        # the error of a program that refuses to start is worth showing
+        error_file = "/tmp/macshell-launch.err"
+        try:
+            with open(error_file, "w"):
+                pass
+        except OSError:
+            error_file = "/dev/null"
+        state.spawn(f"{command} 2> {error_file}")
         # the icon bounces while the application starts up
         if index < 0:
             index = 0
         self._bounce = index
         self._bounce_started = time.monotonic()
         self._animate()
+        GLib.timeout_add(2500, self._report_failure, app, key, error_file)
+
+    def _installed(self, command):
+        """True when the program of a dock item is on the machine."""
+        if os.path.isabs(command):
+            return os.path.exists(command)
+        return shutil.which(command) is not None
+
+    def _report_failure(self, app, key, error_file):
+        """Tell the user why an application did not come up."""
+        if key and self._is_running(app):
+            return False
+        message = ""
+        try:
+            with open(error_file, encoding="utf-8", errors="replace") as fh:
+                message = fh.read().strip()
+        except OSError:
+            message = ""
+        if not message:
+            message = f"{app.get('label', 'The program')} did not start"
+        message = message.splitlines()[0][:120]
+        self.shell.show_message(app.get("label", "Application"), message)
+        return False
 
     def on_leave(self):
         self.hover = -1

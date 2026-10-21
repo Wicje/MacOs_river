@@ -311,7 +311,9 @@ class Shell:
               f"slide={self.dock._slide_value} "
               f"alloc={self.dock.area.get_allocation().width}x"
               f"{self.dock.area.get_allocation().height} "
-              f"edge={self._at_edge} over={self._over_dock}",
+              f"edge={self._at_edge} over={self._over_dock} "
+              f"layout={[(i['index'], round(i['x']), round(i['size'])) for i in self.dock._layout]} "
+              f"region={self.dock.input_rects()}",
               file=sys.stderr, flush=True)
 
     def _tick(self):
@@ -546,6 +548,19 @@ class Shell:
         if menu is None:
             menu = self.popups["wifi"]
         menu.show_items("Clipboard", rows, anchor_x=None)
+
+    def show_message(self, title, message):
+        """A small message, the way macOS reports that something failed."""
+        menu = self.popups.get("message")
+        if menu is None:
+            menu = self.popups["wifi"]
+        menu.show_items(title, [{
+            "glyph": "grid",
+            "label": message,
+            "detail": "",
+            "active": False,
+            "action": None,
+        }], anchor_x=None)
 
     def open_writing_tools(self, text=""):
         """The Writing Tools: rewrite, proofread, summarise a text."""
