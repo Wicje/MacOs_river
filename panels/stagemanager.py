@@ -15,7 +15,7 @@ gi.require_version("GdkPixbuf", "2.0")
 
 from gi.repository import Gdk, GdkPixbuf, Gtk  # noqa: E402
 
-from ..macui import apps, draw, glyphs  # noqa: E402
+from ..macui import apps, draw, glyphs, state  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 CARD_WIDTH = 150
@@ -38,6 +38,8 @@ class StageManager(Panel):
         )
         self.shell = shell
         self._cards: list = []
+        self._groups: list = []
+        self._counts: dict = {}
         self.hover = -1
         self.set_content_size(int(CARD_WIDTH * metrics.scale),
                               int(CARD_HEIGHT * metrics.scale))
@@ -62,6 +64,35 @@ class StageManager(Panel):
         else:
             self.open()
 
+    # -- the groups ----------------------------------------------------------
+
+    def _build_groups(self):
+        """The open windows, grouped by the program they belong to.
+
+        macOS keeps a group of windows for every program, so the strip
+        shows one card per program and the windows of that program come
+        forward one after the other.
+        """
+        groups = []
+        index = {}
+        for entry in self.shell.toplevel_state():
+            app_id = (entry.get("app_id") or "").lower()
+            if not app_id:
+                continue
+            if app_id not in index:
+                index[app_id] = len(groups)
+                groups.append({
+                    "app_id": app_id,
+                    "name": state.FRIENDLY_NAMES.get(app_id, app_id),
+                    "windows": [],
+                    "focused": False,
+                })
+            group = groups[index[app_id]]
+            group["windows"].append(entry.get("title") or "")
+            if entry.get("activated"):
+                group["focused"] = True
+        return groups
+
     # -- painting ------------------------------------------------------------
 
     def paint(self, cr, width, height):
@@ -69,15 +100,15 @@ class StageManager(Panel):
         pal = m.palette()
         scale = m.scale
 
-        windows = self.shell.toplevel_state()
-        if not windows:
+        self._groups = self._build_groups()
+        if not self._groups:
             return
 
         self._cards = []
-        for index, entry in enumerate(windows[:8]):
+        for index, group in enumerate(self._groups[:8]):
             x = 0.0
             y = index * (CARD_HEIGHT * scale + GAP * scale)
-            focused = entry.get("activated")
+            focused = group["focused"]
             hovered = self.hover == index
 
             draw.fill_squircle(cr, x, y, width, CARD_HEIGHT * scale,
@@ -91,7 +122,7 @@ class StageManager(Panel):
                                  m.squareness)
 
             icon = 28 * scale
-            pixbuf = self._icon_for(entry.get("app_id") or "")
+            pixbuf = self._icon_for(group["app_id"])
             if pixbuf is not None:
                 iw, ih = pixbuf.get_width(), pixbuf.get_height()
                 factor = icon / max(iw, ih)
@@ -110,20 +141,21 @@ class StageManager(Panel):
                             y + 12 * scale + icon * 0.26, icon * 0.48,
                             pal["text"])
 
+            color = pal["on_accent"] if focused else pal["text"]
             draw.draw_text(cr, x + 12 * scale + icon + 8 * scale,
-                           y + 22 * scale, entry.get("app_id") or "",
-                           10 * scale,
+                           y + 24 * scale, group["name"], 10 * scale,
+                           color, weight="bold", baseline="middle",
+                           max_width=width - icon - 30 * scale, ellipsize=True)
+            count = len(group["windows"])
+            detail = (group["windows"][0] if count == 1
+                      else f"{count} windows")
+            draw.draw_text(cr, x + 12 * scale + icon + 8 * scale,
+                           y + 46 * scale, detail, 9 * scale,
                            pal["on_accent"] if focused else pal["text_dim"],
                            baseline="middle", max_width=width - icon - 30 * scale,
                            ellipsize=True)
-            draw.draw_text(cr, x + 12 * scale, y + 52 * scale,
-                           entry.get("title") or "", 10 * scale,
-                           pal["on_accent"] if focused else pal["text_dim"],
-                           baseline="middle", max_width=width - 24 * scale,
-                           ellipsize=True)
 
-            self._cards.append((x, y, width, CARD_HEIGHT * scale,
-                                 entry.get("title") or ""))
+            self._cards.append((x, y, width, CARD_HEIGHT * scale, group))
 
     def _icon_for(self, app_id):
         if not app_id:
@@ -150,10 +182,19 @@ class StageManager(Panel):
         return False
 
     def on_click(self, x, y, button):
-        for cx, cy, cw, ch, title in self._cards:
+        for cx, cy, cw, ch, group in self._cards:
             if cx <= x <= cx + cw and cy <= y <= cy + ch:
-                self.shell.activate_window(title)
+                self._raise(group)
                 self.close()
                 return True
         self.close()
         return True
+
+    def _raise(self, group):
+        """Bring the next window of the group to the front."""
+        titles = group.get("windows") or []
+        if not titles:
+            return
+        count = self._counts.get(group["app_id"], 0)
+        self._counts[group["app_id"]] = count + 1
+        self.shell.activate_window(titles[count % len(titles)])

@@ -43,7 +43,7 @@ PACMAN_PKGS=(python python-gobject pycairo gtk3 playerctl wpcli brightnessctl
              ffmpeg thunar gimp obs-studio qt5-wayland qt6-wayland
              xdg-desktop-portal-gtk libadwaita
              gvfs-mtp gvfs-gphoto2 gvfs-smb
-             whisper-cpp)
+             whisper-cpp swaylock)
 
 APT_PKGS=(python3 python3-gi python3-cairo gir1.2-gtk-3.0 playerctl wpctl
           brightnessctl network-manager bluez mako wl-clipboard wtype
@@ -53,7 +53,7 @@ APT_PKGS=(python3 python3-gi python3-cairo gir1.2-gtk-3.0 playerctl wpctl
 DNF_PKGS=(python3 python3-gobject pycairo gtk3 playerctl wpctl brightnessctl
           NetworkManager bluez mako wl-clipboard wtype cliphist grim
           wayland-scanner gcc ghostty yazi foot mpv vlc dolphin ffmpeg gimp
-          obs-studio)
+          obs-studio swaylock)
 
 # the applications that live in the AUR
 AUR_PKGS=(spotify steam)

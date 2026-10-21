@@ -119,7 +119,7 @@ class Dock(Panel):
         self._layout: list = []
         self._shelf = (0, 0, 0, 0)
         self._offset = self._slide_distance
-        self._sizes = [metrics.px("dock_icon")] * (len(APPS) + 1)
+        self._sizes = [metrics.px("dock_icon")] * len(self._items())
         self._targets = list(self._sizes)
         self._animating = False
         self._bounce = -1
@@ -134,6 +134,28 @@ class Dock(Panel):
 
     # -- running apps --------------------------------------------------------
 
+    def _items(self):
+        """The dock's items: the programs, the recent ones and the trash.
+
+        macOS keeps the last programs in front in a section of its own,
+        so the dock does the same.
+        """
+        items = list(APPS)
+        known = {item["id"] for item in items}
+        for app_id in state.recent_apps():
+            if app_id in known:
+                continue
+            known.add(app_id)
+            items.append({
+                "id": app_id,
+                "label": state.FRIENDLY_NAMES.get(app_id, app_id),
+                "cmd": "",
+                "app": app_id,
+                "recent": True,
+            })
+        items.append(TRASH)
+        return items
+
     def _detect_running(self):
         """App ids of the windows that are currently open."""
         try:
@@ -143,13 +165,17 @@ class Dock(Panel):
 
     def refresh_running(self):
         self._running = self._detect_running()
+        count = len(self._items())
+        if count != len(self._sizes):
+            self._sizes = [self.metrics.px("dock_icon")] * count
+            self._targets = list(self._sizes)
         self.redraw()
 
     def reload_apps(self):
         """Pick up a changed list of dock items."""
         global APPS
         APPS = _load_apps()
-        count = len(APPS) + 1
+        count = len(self._items())
         self._sizes = [self.metrics.px("dock_icon")] * count
         self._targets = list(self._sizes)
         self.set_content_size(self.panel_width(), self.panel_height())
@@ -354,7 +380,7 @@ class Dock(Panel):
             size = item["size"]
             x = item["x"]
             y = item["bottom"] - size - self._bounce_offset(index)
-            app = APPS[index] if index < len(APPS) else TRASH
+            app = self._items()[index]
 
             if app.get("glyph") == "grid":
                 draw.fill_squircle(cr, x, y, size, size, size * 0.22,
@@ -372,11 +398,14 @@ class Dock(Panel):
                     r * 2, r * 2, r, pal["text_dim"], 2.0,
                 )
 
-        # separator before the trash
-        sep_x = layout[-2]["centre"] + layout[-2]["size"] / 2
-        sep_x += m.px("dock_gap") * 0.5
-        draw.fill_squircle(cr, sep_x, shelf_y + shelf_h * 0.24, 1,
-                           shelf_h * 0.52, 0.5, pal["separator"], 2.0)
+        # a separator before the recent programs and before the trash
+        items = self._items()
+        for index, item in enumerate(items):
+            if index and (item.get("recent") or index == len(items) - 1):
+                sep_x = layout[index - 1]["centre"] + layout[index - 1]["size"] / 2
+                sep_x += m.px("dock_gap") * 0.5
+                draw.fill_squircle(cr, sep_x, shelf_y + shelf_h * 0.24, 1,
+                                   shelf_h * 0.52, 0.5, pal["separator"], 2.0)
 
         if self.hover >= 0 and self.hover < len(layout):
             self._paint_tooltip(cr, layout[self.hover])
@@ -426,7 +455,7 @@ class Dock(Panel):
     def _paint_tooltip(self, cr, item):
         m = self.metrics
         pal = m.palette()
-        app = APPS[item["index"]] if item["index"] < len(APPS) else TRASH
+        app = self._items()[item["index"]]
         label = app["label"]
         font = 11 * m.scale
         pad_x = 9 * m.scale
@@ -505,7 +534,7 @@ class Dock(Panel):
         for item in self._layout:
             if item["x"] <= x <= item["x"] + item["size"]:
                 index = item["index"]
-                app = APPS[index] if index < len(APPS) else TRASH
+                app = self._items()[index]
                 if button == 3:
                     self.shell.open_dock_menu(app, index)
                     return True
@@ -527,6 +556,13 @@ class Dock(Panel):
             if state.activate_app(key):
                 return
         command = app.get("cmd") or ""
+        if not command and key:
+            # a program of the recent section: find it on the machine
+            for entry in apps.applications():
+                if entry["id"].lower() == key or \
+                        entry["name"].lower() == key:
+                    command = entry["exec"]
+                    break
         if not command:
             return
         if not self._installed(command):

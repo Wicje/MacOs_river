@@ -27,6 +27,8 @@ _cache = {
     "screentime": None,
     "clipboard": None,
     "clip_id": "",
+    "recent": [],
+    "weather": "",
 }
 _cache_lock = threading.Lock()
 
@@ -391,6 +393,26 @@ def focused_app():
 # takes a few hundred milliseconds.  Doing that on the main thread made the
 # panels feel sluggish, so a background thread keeps the values fresh.
 
+def _track_recent(app_id):
+    """Remember the applications that were in front, the newest first."""
+    key = (app_id or "").lower()
+    if not key:
+        return
+    with _cache_lock:
+        recent = list(_cache.get("recent") or [])
+    if recent and recent[0] == key:
+        return
+    recent = [key] + [item for item in recent if item != key]
+    with _cache_lock:
+        _cache["recent"] = recent[:6]
+
+
+def recent_apps():
+    """The applications that were in front, the newest first."""
+    with _cache_lock:
+        return list(_cache.get("recent") or [])
+
+
 def _read_clipboard():
     """The last thing that was copied.
 
@@ -446,10 +468,14 @@ def _refresh_once():
             app_id = entry.get("app_id") or ""
             title = entry.get("title") or ""
     _track_screen_time(app_id)
+    _track_recent(app_id)
+    weather = _fetch_weather()
     with _cache_lock:
         if clip is not None:
             _cache["clipboard"] = clip
             _cache["clip_id"] = clip["id"]
+        if weather:
+            _cache["weather"] = weather
         _cache["media"] = media
         _cache["app_id"] = app_id
         _cache["window"] = title
@@ -493,6 +519,38 @@ def _track_screen_time(app_id):
                 json.dump(data, fh, indent=2)
         except OSError:
             pass
+
+
+WEATHER_FILE = "/tmp/macshell-weather"
+WEATHER_MAX_AGE = 1800
+
+
+def _fetch_weather():
+    """Ask wttr.in for the weather, and remember it for half an hour."""
+    import time as _time
+
+    try:
+        age = _time.time() - os.path.getmtime(WEATHER_FILE)
+        if age < WEATHER_MAX_AGE:
+            with open(WEATHER_FILE, encoding="utf-8") as fh:
+                return fh.read().strip()
+    except OSError:
+        pass
+    out = run("curl -s --max-time 8 'wttr.in/?format=%25l:+%25C+%25t'")
+    out = out.strip().splitlines()[0] if out.strip() else ""
+    if out:
+        try:
+            with open(WEATHER_FILE, "w", encoding="utf-8") as fh:
+                fh.write(out)
+        except OSError:
+            pass
+    return out
+
+
+def weather():
+    """The weather of the place the machine is in."""
+    with _cache_lock:
+        return _cache.get("weather") or ""
 
 
 def screen_time():

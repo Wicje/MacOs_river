@@ -85,12 +85,13 @@ class Widgets(Panel):
             "disk": _disk_percent(),
         }
         self._screen_time = state.screen_time()
+        self._weather = state.weather()
         self.redraw()
 
     def content_height(self):
         m = self.metrics
-        return int(m.px("widget_size") * 2 + m.px("widget_gap")
-                   + m.px("widget_screen_h"))
+        return int(m.px("widget_size") * 2 + m.px("widget_gap") * 2
+                   + m.px("widget_screen_h") + m.px("widget_weather_h"))
 
     # -- painting ------------------------------------------------------------
 
@@ -117,6 +118,33 @@ class Widgets(Panel):
         time_h = m.px("widget_screen_h")
         self._tile(cr, 0, time_y, width, time_h, radius, pal)
         self._paint_screen_time(cr, 0, time_y, width, time_h, pal)
+
+        # the weather
+        weather_y = time_y + time_h + gap
+        weather_h = m.px("widget_weather_h")
+        self._tile(cr, 0, weather_y, width, weather_h, radius, pal)
+        self._paint_weather(cr, 0, weather_y, width, weather_h, pal)
+
+    def _paint_weather(self, cr, x, y, w, h, pal):
+        """The weather where the machine is."""
+        m = self.metrics
+        text = getattr(self, "_weather", "")
+        if not text:
+            draw.draw_text(cr, x + 12 * m.scale, y + h / 2, "The weather",
+                           10 * m.scale, pal["text_faint"], baseline="middle")
+            return
+        # "Lagos, Lagos, NG: Smoky haze +27C"
+        place, _, rest = text.partition(":")
+        place = place.split(",")[0].strip()
+        condition, _, temperature = rest.strip().partition(" ")
+        temperature = temperature.strip().replace("+", "")
+        draw.draw_text(cr, x + 12 * m.scale, y + h * 0.38, place, 11 * m.scale,
+                       pal["text"], weight="bold", baseline="middle")
+        draw.draw_text(cr, x + 12 * m.scale, y + h * 0.72, condition.strip(),
+                       9 * m.scale, pal["text_dim"], baseline="middle")
+        draw.draw_text(cr, x + w - 12 * m.scale, y + h * 0.5, f"{temperature}",
+                       20 * m.scale, pal["text"], weight="bold", align="right",
+                       baseline="middle")
 
     def _paint_screen_time(self, cr, x, y, w, h, pal):
         """How long every application was in the foreground today."""

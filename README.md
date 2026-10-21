@@ -145,9 +145,25 @@ Dolphin, VS Code, GIMP, mpv, Audacity, OBS, Spotify and Steam.
 ## The widgets
 
 The column under the menu bar carries the calendar, the clock, the system
-gauges and **Screen Time**: the shell counts how long every application
-was in the foreground today, the way macOS Tahoe does, and keeps it in
-`~/.local/state/macshell/screentime.json`.
+gauges, **Screen Time** and the weather:
+
+* **Screen Time** — the shell counts how long every application was in
+  the foreground today, the way macOS Tahoe does, and keeps it in
+  `~/.local/state/macshell/screentime.json`.
+* **Weather** — the place and the temperature where the machine is, from
+  wttr.in, remembered for half an hour.
+
+## The recent programs
+
+The dock keeps a section of its own with the programs that were in front
+last, the way macOS does.  Clicking one brings it up again.
+
+## The Stage Manager
+
+The strip on the left groups the open windows by the program they belong
+to, the way macOS 26 does: one card per program, with the number of its
+windows.  Clicking a card brings the next window of that program to the
+front.
 
 ## Requirements
 
