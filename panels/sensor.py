@@ -44,3 +44,8 @@ class Sensor(Panel):
         absolute = y if self.edge == "top" else screen_h - STRIP + y
         self.shell.pointer_moved(self.edge, absolute)
         return False
+
+    def on_leave(self):
+        """The pointer left the strip, so the panel goes away again."""
+        self.shell.pointer_left(self.edge)
+        return False

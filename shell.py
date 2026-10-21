@@ -100,6 +100,8 @@ class Shell:
         self.sensors = [Sensor(self.metrics, self, "bottom")]
         self._notch_until = 0.0
         self._dock_until = 0.0
+        self._at_edge = None
+        self._over_dock = False
         self._dock_shown = None
         self._notch_shown = None
         self._focus_key = None
@@ -306,7 +308,11 @@ class Shell:
               f"in_front={self._app_in_front()} "
               f"dock_mode={self.metrics.config.get('dock_mode')} "
               f"dock_shown={self._dock_shown} visible={self.dock.get_visible()} "
-              f"slide={self.dock._slide_value}", file=sys.stderr, flush=True)
+              f"slide={self.dock._slide_value} "
+              f"alloc={self.dock.area.get_allocation().width}x"
+              f"{self.dock.area.get_allocation().height} "
+              f"edge={self._at_edge} over={self._over_dock}",
+              file=sys.stderr, flush=True)
 
     def _tick(self):
         if self.metrics.reload():
@@ -342,19 +348,34 @@ class Shell:
             elif absolute_y > 60:
                 self._notch_until = 0
         else:
+            # the pointer is in the strip along the bottom edge: the dock
+            # stays there until the pointer leaves again
             if absolute_y >= screen_h - 6:
-                self._dock_until = now + 2.5
-            elif absolute_y < screen_h - 170:
-                self._dock_until = 0
+                self._at_edge = "bottom"
+            else:
+                self._at_edge = None
         self._sync_panels()
+
+    def pointer_left(self, edge):
+        """The pointer left the edge of the screen."""
+        if edge == "bottom" and self._at_edge == "bottom":
+            self._at_edge = None
+            self._sync_panels()
 
     def keep_alive(self, which):
         """The pointer is over a panel, so it stays visible."""
         now = time.monotonic()
         if which == "dock":
+            self._over_dock = True
             self._dock_until = now + 2.5
         else:
             self._notch_until = now + 2.5
+
+    def panel_left(self, which):
+        """The pointer left a panel."""
+        if which == "dock":
+            self._over_dock = False
+            self._sync_panels()
 
     def _app_in_front(self):
         """True when an application window covers the screen.
@@ -390,7 +411,9 @@ class Shell:
             mode = cfg.get("dock_mode", "desktop")
             if mode == "always":
                 pass
-            elif self._dock_until > now:
+            elif self._over_dock or self._at_edge == "bottom":
+                # the pointer is at the bottom of the screen or over the
+                # dock: it stays there
                 pass
             elif mode == "desktop" and not self._app_in_front():
                 # the desktop shows: the dock belongs on the screen

@@ -435,7 +435,8 @@ class Dock(Panel):
         animation is possible.
         """
         if shown:
-            self.show_all()
+            if not self.get_visible():
+                self.show_all()
             self.slide("bottom", 0)
             self.redraw()
             return
@@ -512,5 +513,6 @@ class Dock(Panel):
         self.hover = -1
         self.pointer = (-1, -1)
         self._update_targets()
+        self.shell.panel_left("dock")
         self.redraw()
         return False

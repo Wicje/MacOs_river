@@ -10,7 +10,7 @@
     "reduce_transparency": false,
     "wallpaper_rotate": true,
     "show_desktop_icons": false,
-    "dock_mode": "auto",
+    "dock_mode": "desktop",
     "notch_mode": "auto",
     "glass_opacity": 1.0,
     "glass_tint": 0.0,

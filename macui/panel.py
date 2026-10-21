@@ -230,12 +230,15 @@ class Panel(Gtk.Window):
         if abs(target - current) < 1.0:
             self._slide_value = target
             self._apply_slide()
+            self.redraw()
             self._slide_timer = None
             if self._slide_done:
                 self._slide_done()
             return False
         self._slide_value = current + (target - current) * 0.4
         self._apply_slide()
+        # the new margin only reaches the compositor with a frame
+        self.redraw()
         return True
 
     def _apply_slide(self):
