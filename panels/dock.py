@@ -84,20 +84,21 @@ class Dock(Panel):
 
     def __init__(self, metrics, shell):
         m = metrics
-        # the surface starts off screen and slides in when it is wanted
         self._base_margin = int(m.px("dock_margin_bottom"))
-        self._hidden_margin = self._base_margin - self.panel_height(metrics)
+        # the shelf slides inside the surface, so the surface itself stays
+        # on the screen and the compositor keeps sending it frames
+        self._slide_distance = self._base_margin + self.shelf_height(metrics)
         super().__init__(
             metrics,
             layer="top",
             anchors={"bottom": True},
-            margins={"bottom": self._hidden_margin},
             exclusive=0,
         )
         self.shell = shell
         self.hover = -1
         self._layout: list = []
         self._shelf = (0, 0, 0, 0)
+        self._offset = self._slide_distance
         self._sizes = [metrics.px("dock_icon")] * (len(APPS) + 1)
         self._targets = list(self._sizes)
         self._animating = False
@@ -142,6 +143,10 @@ class Dock(Panel):
         return int(shelf_h + (m.px("dock_icon_max") - m.px("dock_icon"))
                    + TOOLTIP_SPACE)
 
+    def shelf_height(self, m=None):
+        m = m or self.metrics
+        return m.px("dock_icon") + m.px("dock_pad_y") * 2
+
     def panel_width(self):
         """Width of the dock surface.
 
@@ -156,10 +161,6 @@ class Dock(Panel):
         count = len(APPS) + 1
         resting = base * count + gap * (count - 1)
         return int(resting + pad * 2 + m.px("dock_icon_max") * 0.6)
-
-    def shelf_height(self):
-        m = self.metrics
-        return m.px("dock_icon") + m.px("dock_pad_y") * 2
 
     def _compute_layout(self):
         """Icon geometry for the current pointer position.
@@ -191,10 +192,9 @@ class Dock(Panel):
         shelf_x = (width - shelf_w) / 2
 
         shelf_h = self.shelf_height()
-        # the shelf sits at the bottom of the surface; the surface itself
-        # stops short of the bottom edge of the screen, so the strip that
-        # brings the dock back is never covered by it
-        shelf_y = height - shelf_h
+        # the shelf sits at the bottom of the surface and slides down into
+        # it when the dock hides
+        shelf_y = height - shelf_h - self._base_margin + self._offset
         icon_bottom = shelf_y + shelf_h - m.px("dock_pad_y")
 
         layout = []
@@ -443,9 +443,9 @@ class Dock(Panel):
         it only moves, which keeps the animation smooth.
         """
         if shown:
-            self.slide("bottom", self._base_margin)
+            self.slide_to(0)
         else:
-            self.slide("bottom", self._hidden_margin)
+            self.slide_to(self._slide_distance)
 
     # -- input ---------------------------------------------------------------
 
@@ -464,7 +464,8 @@ class Dock(Panel):
         m = self.metrics
         icon_bottom = shelf_y + shelf_h - m.px("dock_pad_y")
         top = icon_bottom - m.px("dock_icon_max")
-        return [(shelf_x, top, shelf_w, icon_bottom - top)]
+        # the shelf slides out of the surface, and the region with it
+        return [(shelf_x, top + self._offset, shelf_w, icon_bottom - top)]
 
     def on_motion(self, x, y):
         self._update_targets()

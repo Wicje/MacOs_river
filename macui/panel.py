@@ -109,9 +109,13 @@ class Panel(Gtk.Window):
 
         self._slide_edge = slide_edge
         self._slide_value = float((margins or {}).get(slide_edge, 0))
-        self._slide_target = self._slide_value
         self._slide_source = None
-        self._slide_done = None
+        # the panel moves its own content instead of the surface: a surface
+        # that is off the screen gets no frames from the compositor, and the
+        # animation would freeze half way
+        self._offset = 0.0
+        self._offset_target = 0.0
+        self._offset_done = None
 
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_namespace(self, namespace or self.NAMESPACE)
@@ -162,6 +166,7 @@ class Panel(Gtk.Window):
         self.connect("leave-notify-event", self._on_leave)
         self.connect("scroll-event", self._on_scroll)
         self.connect("map-event", self._on_map)
+        self.connect("configure-event", self._on_configure)
         self.connect("destroy", Gtk.main_quit)
 
     # -- the input region ----------------------------------------------------
@@ -182,9 +187,13 @@ class Panel(Gtk.Window):
         return None
 
     def update_input_region(self):
-        """Apply the input rectangles to the surface."""
+        """Apply the input rectangles to the surface.
+
+        An empty list means the surface takes no pointer at all, which is
+        how a panel that is out of the way stops swallowing clicks.
+        """
         rects = self.input_rects()
-        if not rects or _GDK is None:
+        if rects is None or _GDK is None:
             return
         window = self.get_window()
         if window is None:
@@ -214,45 +223,42 @@ class Panel(Gtk.Window):
         self.update_input_region()
         return False
 
+    def _on_configure(self, *_args):
+        # the surface was resized, so the region may have moved
+        self.update_input_region()
+        return False
+
     # -- sliding -------------------------------------------------------------
 
-    def slide(self, edge, target, done=None):
-        """Animate the surface's margin on one edge.
+    def slide_to(self, target, done=None):
+        """Ease the panel's own offset to the target.
 
-        A negative margin pushes the surface off the screen, which is how
-        the dock slides down and the notch slides up the way macOS does it.
-
-        The animation runs on the frame clock: a new margin only reaches
-        the compositor when it rides along with a frame that is drawn, and
-        the frame clock is what keeps the two in step.
+        The panels that slide (the dock and the notch) draw their content
+        at an offset instead of moving the surface, so the surface stays on
+        the screen, the compositor keeps sending frames and the animation
+        never freezes half way.
         """
-        self._slide_edge = edge
-        self._slide_target = float(target)
-        self._slide_done = done
+        self._offset_target = float(target)
+        self._offset_done = done
         if self._slide_source is None:
             self._slide_source = self.area.add_tick_callback(self._slide_tick)
 
     def _slide_tick(self, _widget, _clock):
-        current = self._slide_value
-        target = self._slide_target
-        if abs(target - current) < 1.0:
-            self._slide_value = target
-            self._apply_slide()
+        current = self._offset
+        target = self._offset_target
+        if abs(target - current) < 0.5:
+            self._offset = target
             self.area.queue_draw()
             self._slide_source = None
-            done = self._slide_done
-            self._slide_done = None
+            done = self._offset_done
+            self._offset_done = None
+            self.update_input_region()
             if done:
                 done()
             return False
-        self._slide_value = current + (target - current) * 0.4
-        self._apply_slide()
+        self._offset = current + (target - current) * 0.4
         self.area.queue_draw()
         return True
-
-    def _apply_slide(self):
-        edge = getattr(GtkLayerShell.Edge, self._slide_edge.upper())
-        GtkLayerShell.set_margin(self, edge, int(self._slide_value))
 
     # -- geometry helpers ---------------------------------------------------
 

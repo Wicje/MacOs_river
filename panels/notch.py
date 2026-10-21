@@ -43,18 +43,19 @@ class Notch(Panel):
     def __init__(self, metrics, shell):
         width = int(metrics.px("notch_width"))
         height = int(metrics.px("notch_height"))
-        # the card starts under the top edge and slides down when it is
-        # wanted; the surface is never unmapped, so the slide is smooth
-        self._hidden_margin = -height
+        # the card slides up under the top edge when it is not wanted; the
+        # surface stays on the screen, so the compositor keeps sending it
+        # frames and the slide never freezes
+        self._slide_distance = height
         super().__init__(
             metrics,
             layer="top",
             anchors={"top": True},
-            margins={"top": self._hidden_margin},
             keyboard=False,
             slide_edge="top",
         )
         self.shell = shell
+        self._offset = self._slide_distance
         self.set_content_size(width, height)
         screen = metrics.width or 1366
         self.set_horizontal_offset(int((screen - width) / 2))
@@ -64,6 +65,15 @@ class Notch(Panel):
         self._buttons: list = []
         self._battery = None
         self._charging = False
+
+    def input_rects(self):
+        """Only the card takes the pointer.
+
+        When the card slides up out of the way the region is empty, so the
+        menu bar underneath keeps its clicks.
+        """
+        return [(0, -self._offset, self.metrics.px("notch_width"),
+                 self.metrics.px("notch_height"))]
 
     # -- visibility ----------------------------------------------------------
 
@@ -75,9 +85,9 @@ class Notch(Panel):
         not near the top of the display.
         """
         if shown:
-            self.slide("top", 0)
+            self.slide_to(0)
         else:
-            self.slide("top", self._hidden_margin)
+            self.slide_to(self._slide_distance)
 
     # -- state ---------------------------------------------------------------
 
@@ -115,6 +125,10 @@ class Notch(Panel):
         pal = m.palette()
         radius = m.px("notch_radius")
         scale = m.scale
+
+        # the card slides up under the top edge when it is not wanted
+        cr.save()
+        cr.translate(0, -self._offset)
 
         # the card: a rounded rectangle hanging from the top edge, in the
         # colours of the theme so the text stays readable
@@ -235,6 +249,8 @@ class Notch(Panel):
             cr.set_source_rgba(*pal["separator"])
             cr.rectangle(sep_x, height * 0.22, 1, height * 0.56)
             cr.fill()
+
+        cr.restore()
 
     def _paint_calendar(self, cr, x, y, w, h, pal):
         """The little calendar the notch shows when nothing is playing."""
