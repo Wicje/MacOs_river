@@ -102,18 +102,6 @@ ollama pull llava         # for Screen
 
 Without a model the panel says so instead of failing.
 
-## Install
-
-```sh
-git clone <this repository> ~/.config/macshell
-cd ~/.config/macshell
-./install.sh
-```
-
-`install.sh` copies the river scripts into `~/.config/river`, installs the
-systemd user units, builds the small helper that lists the compositor's
-windows and enables both services.
-
 ## The notch
 
 The notch is the card that hangs from the top of the screen, the way macOS
