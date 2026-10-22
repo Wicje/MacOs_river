@@ -139,7 +139,7 @@ dock keeps the whole entry in `~/.config/macshell/dock.json`, so a program
 of its own survives a restart.  Right clicking a dock icon offers *Remove
 from Dock* and *Quit*.
 
-The programs the shell starts with are Ghostty, Foot, Firefox, Continua,
+The programs the shell starts with are Kitty, Foot, Firefox, Continua,
 Dolphin, VS Code, GIMP, mpv, Audacity, OBS, Spotify and Steam.
 
 ## The widgets

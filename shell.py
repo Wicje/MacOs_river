@@ -252,7 +252,7 @@ class Shell:
             self.stage_manager.toggle()
         elif command.startswith("tile:"):
             zone = command.split(":", 1)[1]
-            self.snap_window(zone if zone in ("left", "right") else "")
+            self.snap_window(zone)
         elif command == "ask":
             self.assistant.open("ask")
         elif command == "write":
@@ -324,7 +324,8 @@ class Shell:
               f"{self.dock.area.get_allocation().height} "
               f"edge={self._at_edge} over={self._over_dock} "
               f"layout={[(i['index'], round(i['x']), round(i['size'])) for i in self.dock._layout]} "
-              f"region={self.dock.input_rects()}",
+              f"region={self.dock.input_rects()} "
+              f"click={self.dock._last_click}",
               file=sys.stderr, flush=True)
 
     def _tick(self):
@@ -377,8 +378,12 @@ class Shell:
 
 
     def snap_window(self, zone):
-        """Snap the focused window to the left or the right half."""
-        self.snap_zone.show_zone(zone)
+        """Snap the focused window to the left or the right half.
+
+        The rectangle of macOS is only drawn for the two halves; the
+        quarters are tiled without it.
+        """
+        self.snap_zone.show_zone(zone if zone in ("left", "right") else "")
         actions.tile_window(zone)
         GLib.timeout_add(600, self.snap_zone.close)
 

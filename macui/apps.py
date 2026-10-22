@@ -39,7 +39,7 @@ BUNDLED_ICONS = {
     "obs": ("obs", "com.obsproject.Studio"),
     "spotify": ("spotify", "com.spotify.Client", "spotify-player"),
     "steam": ("steam", "steamwebhelper"),
-    "terminal": ("terminal", "foot", "footclient", "alacritty", "kitty"),
+    "terminal": ("terminal", "foot", "footclient", "alacritty"),
     "trash": ("trash",),
     "vlc": ("vlc", "org.videolan.VLC"),
     "vscode": ("vscode", "code", "code-oss", "codium", "vscodium"),

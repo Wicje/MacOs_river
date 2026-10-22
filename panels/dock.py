@@ -34,7 +34,7 @@ DEFAULT_APPS = [
      "app": "continua"},
     {"id": "dolphin", "label": "Files", "cmd": "dolphin", "app": "dolphin"},
     {"id": "terminal", "label": "Terminal", "cmd": "foot", "app": "foot"},
-    {"id": "ghostty", "label": "Ghostty", "cmd": "ghostty", "app": "ghostty"},
+    {"id": "kitty", "label": "Kitty", "cmd": "kitty", "app": "kitty"},
     {"id": "vscode", "label": "Visual Studio Code", "cmd": "code", "app": "code"},
     {"id": "gimp", "label": "GIMP", "cmd": "gimp", "app": "gimp"},
     {"id": "mpv", "label": "mpv", "cmd": "mpv", "app": "mpv"},
@@ -158,6 +158,7 @@ class Dock(Panel):
         self._base_margin = int(m.px("dock_margin_bottom"))
         self._pad_y = m.px("dock_pad_y")
         self._icons: dict = {}
+        self._last_click = None
         self._items_cache = self._build_items()
         self._size = _measure(metrics, len(self._items_cache))
         # the shelf slides inside the surface, so the surface itself stays
@@ -671,6 +672,7 @@ class Dock(Panel):
         return False
 
     def on_click(self, x, y, button):
+        self._last_click = (round(x), round(y), button)
         for item in self._layout:
             if item["x"] <= x <= item["x"] + item["size"]:
                 index = item["index"]
