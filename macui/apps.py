@@ -24,6 +24,26 @@ DESKTOP_DIRS = (
 
 ICON_SIZES = ("256x256", "128x128", "96x96", "64x64", "48x48", "32x32",
               "16x16")
+
+# The icons the shell ships, and the programs they belong to.  A program
+# is called differently by the compositor, by the desktop files and by
+# the dock, and every one of those names is listed here, so a program
+# looks the same in the dock and in the launchpad.
+BUNDLED_ICONS = {
+    "audacity": ("audacity",),
+    "chromium": ("chromium", "chromium-browser", "google-chrome"),
+    "dolphin": ("dolphin", "org.kde.dolphin"),
+    "firefox": ("firefox", "firefox-esr", "org.mozilla.firefox"),
+    "gimp": ("gimp", "org.gimp.GIMP"),
+    "mpv": ("mpv",),
+    "obs": ("obs", "com.obsproject.Studio"),
+    "spotify": ("spotify", "com.spotify.Client", "spotify-player"),
+    "steam": ("steam", "steamwebhelper"),
+    "terminal": ("terminal", "foot", "footclient", "alacritty", "kitty"),
+    "trash": ("trash",),
+    "vlc": ("vlc", "org.videolan.VLC"),
+    "vscode": ("vscode", "code", "code-oss", "codium", "vscodium"),
+}
 ICON_DIRS = (
     "~/.local/share/icons",
     "/usr/share/icons",
@@ -96,7 +116,7 @@ def icon_path(name):
     return None
 
 
-def _plain(value):
+def plain_key(value):
     """A name without the dots and the underscores.
 
     The compositor and the desktop files do not always spell a program
@@ -114,11 +134,11 @@ def _matches(entry, key):
     if key in ((entry.get("id") or "").lower(),
                (entry.get("name") or "").lower()):
         return True
-    plain = _plain(key)
+    plain = plain_key(key)
     if not plain:
         return False
-    return plain in (_plain(entry.get("id") or ""),
-                     _plain(entry.get("name") or ""))
+    return plain in (plain_key(entry.get("id") or ""),
+                     plain_key(entry.get("name") or ""))
 
 
 def icon_for_app(name):
@@ -236,6 +256,25 @@ def all_applications():
     return list(_cache_all)
 
 
+def bundled_icon_for(*names):
+    """The name of the icon the shell ships for a program.
+
+    The programs are looked up by their own name first and by the names
+    they are known under afterwards, so a program that is called
+    "org.kde.dolphin" by the compositor still finds the icon of the
+    dock.
+    """
+    keys = [name.lower() for name in names if name]
+    for key in keys:
+        if key in BUNDLED_ICONS:
+            return key
+    for key in keys:
+        for icon, aliases in BUNDLED_ICONS.items():
+            if key in aliases:
+                return icon
+    return ""
+
+
 def name_for_id(app_id):
     """The name of the application with that id.
 
@@ -248,6 +287,31 @@ def name_for_id(app_id):
     for entry in all_applications():
         if _matches(entry, app_id):
             return entry.get("name") or ""
+    return ""
+
+
+def command_for_id(app_id):
+    """The program of the application with that id.
+
+    The compositor calls a program by the name of its desktop entry
+    (org.kde.dolphin), while the dock calls it by the name of the
+    program itself (dolphin); the two are tied together by the command
+    the entry runs.
+    """
+    app_id = (app_id or "").lower()
+    if not app_id:
+        return ""
+    for entry in all_applications():
+        if _matches(entry, app_id):
+            command = (entry.get("exec") or "").split()
+            if not command:
+                return ""
+            name = os.path.basename(command[0])
+            if name == "flatpak":
+                # a flatpak program is run by flatpak, and the name of the
+                # program is the id of its entry
+                return entry.get("id") or ""
+            return name
     return ""
 
 

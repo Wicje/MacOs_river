@@ -383,21 +383,33 @@ FRIENDLY_NAMES = {
 }
 
 
+_friendly_cache = {}
+_friendly_time = 0.0
+
+
 def friendly_name(app_id):
     """A readable name for an application id.
 
     The compositor calls the applications by their own name, which is
     not always the name the desktop knows them by, so the desktop files
-    are asked as well.
+    are asked as well.  The answers are kept for a while: the dock asks
+    for them on every frame.
     """
+    global _friendly_time
     if not app_id:
         return ""
+    now = time.monotonic()
+    if now - _friendly_time > apps.CACHE_TTL:
+        _friendly_cache.clear()
+        _friendly_time = now
+    if app_id in _friendly_cache:
+        return _friendly_cache[app_id]
     if app_id in FRIENDLY_NAMES:
-        return FRIENDLY_NAMES[app_id]
-    name = apps.name_for_id(app_id)
-    if name:
-        return name
-    return app_id
+        name = FRIENDLY_NAMES[app_id]
+    else:
+        name = apps.name_for_id(app_id) or app_id
+    _friendly_cache[app_id] = name
+    return name
 
 
 def focused_app_id():

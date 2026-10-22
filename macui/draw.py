@@ -332,6 +332,32 @@ def _render_svg(path, size):
         return None
 
 
+def bundled_icon_path(name):
+    """The path of an icon the shell ships, if it has one."""
+    if not name:
+        return None
+    path = os.path.join(ICON_DIR, name if name.endswith(".png") else name + ".png")
+    return path if os.path.exists(path) else None
+
+
+def app_tile(cr, x, y, size, letter, pal, exponent=5.0):
+    """The tile of a program that has no icon of its own.
+
+    macOS draws a rounded tile with the first letter of the program on
+    it, and the shell keeps that look for the programs it has no icon
+    for.
+    """
+    radius = size * 0.22
+    fill_squircle(cr, x, y, size, size, radius, pal["fill_hover"], exponent)
+    stroke_squircle(cr, x, y, size, size, radius, pal["separator"], 1.0,
+                    exponent)
+    if not letter:
+        return
+    draw_text(cr, x + size / 2, y + size / 2, letter[:1].upper(),
+              size * 0.46, pal["text"], weight="500", align="center",
+              baseline="middle")
+
+
 def draw_icon(cr, name, x, y, size):
     """Draw an app icon scaled to `size` with its top-left at (x, y)."""
     pb = load_pixbuf(name)

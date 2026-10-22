@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import time
 
@@ -156,6 +157,7 @@ class Dock(Panel):
         m = metrics
         self._base_margin = int(m.px("dock_margin_bottom"))
         self._pad_y = m.px("dock_pad_y")
+        self._icons: dict = {}
         self._items_cache = self._build_items()
         self._size = _measure(metrics, len(self._items_cache))
         # the shelf slides inside the surface, so the surface itself stays
@@ -180,7 +182,6 @@ class Dock(Panel):
         self._animating = False
         self._bounce = -1
         self._bounce_started = 0.0
-        self._icons: dict = {}
 
         width = self.panel_width()
         self.set_content_size(width, self.panel_height())
@@ -200,18 +201,43 @@ class Dock(Panel):
         items = list(APPS)
         known = {item["id"] for item in items}
         for app_id in state.recent_apps():
-            if app_id in known:
+            label = state.friendly_name(app_id)
+            if self._is_known(items, app_id, label):
+                # the program is in the dock already: macOS does not show
+                # it twice, not even under another name
                 continue
             known.add(app_id)
             items.append({
                 "id": app_id,
-                "label": state.friendly_name(app_id),
+                "label": label,
                 "cmd": "",
                 "app": app_id,
                 "recent": True,
             })
         items.append(TRASH)
         return items
+
+    def _is_known(self, items, app_id, label):
+        """True when a dock item is the same program as a recent one.
+
+        The compositor calls a program by the name of its desktop entry
+        and the dock by the name of the program itself, so Files is
+        "dolphin" in the dock and "org.kde.dolphin" in the compositor.
+        """
+        plain = apps.plain_key(app_id)
+        command = apps.command_for_id(app_id)
+        for item in items:
+            for key in (item.get("id"), item.get("app")):
+                if not key:
+                    continue
+                if apps.plain_key(key) == plain:
+                    return True
+                if command and os.path.basename(key) == command:
+                    return True
+            name = (item.get("label") or "").lower()
+            if label and name and name == label.lower():
+                return True
+        return False
 
     def _items(self):
         """The items of the dock, as they are right now.
@@ -491,21 +517,22 @@ class Dock(Panel):
     def _paint_icon(self, cr, app, x, y, size, pal):
         """The icon of an application.
 
-        The shell ships a few icons, but anything else takes the icon the
-        system has for the application, so a new program in the dock
-        looks right straight away.
+        The icons the shell ships come first, so the dock keeps its own
+        look; a program the shell has no icon for takes the icon of the
+        desktop, and a program nobody knows gets a tile with its first
+        letter on it.
         """
         if draw.draw_icon(cr, app["id"], x, y, size):
+            return
+        bundled = apps.bundled_icon_for(app.get("app"), app.get("id"))
+        if bundled and draw.draw_icon(cr, bundled, x, y, size):
             return
         pixbuf = self._system_icon(app.get("app") or app["id"])
         if pixbuf is None and app.get("recent"):
             pixbuf = self._recent_icon(app)
         if pixbuf is None:
-            draw.fill_squircle(cr, x + size * 0.18, y + size * 0.1,
-                               size * 0.64, size * 0.7, size * 0.1,
-                               pal["fill_hover"], self.metrics.squareness)
-            glyphs.grid(cr, x + size * 0.3, y + size * 0.2, size * 0.4,
-                        pal["text_dim"])
+            draw.app_tile(cr, x, y, size, app.get("label") or "", pal,
+                          self.metrics.squareness)
             return
         iw, ih = pixbuf.get_width(), pixbuf.get_height()
         factor = size / max(iw, ih)
@@ -522,10 +549,8 @@ class Dock(Panel):
             return None
         if name in self._icons:
             return self._icons[name]
-        pixbuf = None
         path = apps.icon_for_app(name)
-        if path:
-            pixbuf = draw.load_icon(path)
+        pixbuf = draw.load_icon(path) if path else None
         self._icons[name] = pixbuf
         return pixbuf
 
@@ -535,10 +560,6 @@ class Dock(Panel):
         The compositor and the desktop files do not always call a
         program the same, so the friendly name is asked as well.
         """
-        key = app.get("app") or app.get("id") or ""
-        pixbuf = self._system_icon(key)
-        if pixbuf is not None:
-            return pixbuf
         label = app.get("label") or ""
         if not label:
             return None
@@ -585,7 +606,7 @@ class Dock(Panel):
         for running in self._running:
             if key and running == key:
                 return True
-            friendly = state.FRIENDLY_NAMES.get(running, "").lower()
+            friendly = state.friendly_name(running).lower()
             if label and friendly and friendly == label:
                 return True
         return False
@@ -597,7 +618,7 @@ class Dock(Panel):
         for app_id, entry in self._windows.items():
             if key and app_id == key:
                 return entry
-            friendly = state.FRIENDLY_NAMES.get(app_id, "").lower()
+            friendly = state.friendly_name(app_id).lower()
             if label and friendly and friendly == label:
                 return entry
         return None
@@ -735,16 +756,30 @@ class Dock(Panel):
         Only a program that said something is worth a message: an
         application that is still starting has not failed, and on a slow
         machine it often needs a few seconds to show its first window.
+        The line that says what went wrong is the one to show: a program
+        that writes a few lines of news before it gives up would
+        otherwise report its first line.
         """
-        message = ""
         try:
             with open(error_file, encoding="utf-8", errors="replace") as fh:
-                message = fh.read().strip()
+                lines = [line.strip() for line in fh.read().splitlines()
+                         if line.strip()]
         except OSError:
-            message = ""
-        if not message:
+            lines = []
+        if not lines:
             return False
-        message = message.splitlines()[0][:120]
+        message = ""
+        for line in lines:
+            if "error" in line.lower() or line.lower().startswith("warning"):
+                message = line
+                break
+        if not message:
+            message = lines[-1]
+        # the programs say what they do in a prefix, and the message
+        # should be about the problem and not about the program
+        message = re.sub(r"^(warning|error|info)\s*\([^)]*\):\s*", "",
+                         message, flags=re.IGNORECASE)
+        message = message[:120]
         self.shell.show_message(app.get("label", "Application"), message)
         return False
 

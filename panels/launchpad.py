@@ -203,7 +203,14 @@ class Launchpad(Panel):
     def _icon_for(self, app):
         path = app.get("icon_path")
         if path is None:
-            path = apps.icon_path(app.get("icon") or "")
+            # the icons the shell ships come first, so the grid keeps the
+            # look of the dock; the rest takes the icon of the desktop
+            command = (app.get("exec") or "").split()
+            bundled = apps.bundled_icon_for(app.get("id"),
+                                            command[0] if command else "")
+            path = draw.bundled_icon_path(bundled) if bundled else None
+            if not path:
+                path = apps.icon_path(app.get("icon") or "")
             app["icon_path"] = path
         if not path:
             return None
