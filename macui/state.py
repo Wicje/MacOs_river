@@ -7,6 +7,7 @@ responsive while the state is refreshed.
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import subprocess
@@ -524,6 +525,7 @@ def _refresh_once():
             _cache["clip_id"] = clip["id"]
         if weather:
             _cache["weather"] = weather
+            _cache["weather_full"] = _read_weather_json()
         _cache["media"] = media
         _cache["app_id"] = app_id
         _cache["window"] = title
@@ -570,35 +572,152 @@ def _track_screen_time(app_id):
 
 
 WEATHER_FILE = "/tmp/macshell-weather"
+WEATHER_JSON = "/tmp/macshell-weather.json"
 WEATHER_MAX_AGE = 1800
 
 
+def _weather_from_j1(data):
+    """The wttr.in JSON turned into the shell's own report."""
+    try:
+        now = data["current_condition"][0]
+        condition = now["weatherDesc"][0]["value"]
+        report = {
+            "place": (data.get("nearest_area") or [{}])[0].get("areaName",
+                                                                [{}])[0]
+            .get("value", ""),
+            "condition": condition,
+            "temp": now.get("temp_C", ""),
+            "feels": now.get("FeelsLikeC", ""),
+            "min": data["weather"][0].get("mintempC", ""),
+            "max": data["weather"][0].get("maxtempC", ""),
+            "humid": now.get("humidity", ""),
+            "wind": now.get("windspeedKmph", ""),
+        }
+        days = []
+        for index, day in enumerate(data.get("weather", [])[:5]):
+            if index == 0:
+                continue
+            icons = [h["weatherDesc"][0]["value"] for h in day.get("hourly", [{}])]
+            days.append({
+                "dow": time.strftime("%a", time.strptime(day["date"],
+                                                        "%Y-%m-%d")),
+                "min": day.get("mintempC", ""),
+                "max": day.get("maxtempC", ""),
+                "condition": icons[len(icons) // 2] if icons else "",
+            })
+        report["forecast"] = days
+        return report
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+
+
 def _fetch_weather():
-    """Ask wttr.in for the weather, and remember it for half an hour."""
+    """Ask wttr.in for the weather, and remember it for half an hour.
+
+    The answer is kept twice: the short line the dock and the widgets
+    have always shown, and the whole report with the forecast of the
+    next days for the widget column and the notification centre.
+    """
     import time as _time
 
     try:
-        age = _time.time() - os.path.getmtime(WEATHER_FILE)
+        age = _time.time() - os.path.getmtime(WEATHER_JSON)
         if age < WEATHER_MAX_AGE:
             with open(WEATHER_FILE, encoding="utf-8") as fh:
                 return fh.read().strip()
     except OSError:
         pass
-    out = run("curl -s --max-time 8 'wttr.in/?format=%25l:+%25C+%25t'")
-    out = out.strip().splitlines()[0] if out.strip() else ""
-    if out:
-        try:
-            with open(WEATHER_FILE, "w", encoding="utf-8") as fh:
-                fh.write(out)
-        except OSError:
-            pass
-    return out
+    out = run("curl -s --max-time 8 'wttr.in/?format=j1'")
+    if not out.strip():
+        return ""
+    try:
+        data = json.loads(out)
+    except ValueError:
+        data = None
+    report = _weather_from_j1(data) if data else None
+    if not report:
+        return ""
+    short = f"{report['place']}: {report['condition']} " \
+            f"+{report['temp']}C"
+    try:
+        with open(WEATHER_FILE, "w", encoding="utf-8") as fh:
+            fh.write(short)
+        with open(WEATHER_JSON, "w", encoding="utf-8") as fh:
+            json.dump(report, fh)
+    except OSError:
+        pass
+    return short
+
+
+def weather_report():
+    """The whole weather report, forecast and all.
+
+    It comes from the file of the last two hours, so the widgets of a
+    morning that started with no network at all still have yesterday's
+    report to show.
+    """
+    report = _read_weather_json(WEATHER_MAX_AGE * 4)
+    if report:
+        return report
+    with _cache_lock:
+        return None
+
+
+def _read_weather_json(max_age=None):
+    """The report of the last fetch, if the file is fresh enough."""
+    try:
+        age = time.time() - os.path.getmtime(WEATHER_JSON)
+        if max_age is not None and age > max_age:
+            return None
+        with open(WEATHER_JSON, encoding="utf-8") as fh:
+            report = json.load(fh)
+        if isinstance(report, dict) and report.get("temp"):
+            return report
+    except (OSError, ValueError):
+        pass
+    return None
 
 
 def weather():
     """The weather of the place the machine is in."""
     with _cache_lock:
         return _cache.get("weather") or ""
+
+
+# --- the lights of the notch ------------------------------------------------
+#
+# macOS shows a green dot when a program uses the camera and an orange
+# one when a program uses the microphone.  The lights live in the
+# kernel: a capture device that runs is a file that says so.
+
+def mic_active():
+    """True when a program is recording from the microphone."""
+    active = False
+    try:
+        for sub in glob.glob("/proc/asound/*/pcm*c/sub*/status"):
+            with open(sub) as fh:
+                if "RUNNING" in fh.read():
+                    active = True
+                    break
+    except OSError:
+        pass
+    with _cache_lock:
+        _cache["mic"] = active
+    return active
+
+
+def camera_active():
+    """True when a program holds a camera.
+
+    A camera nobody holds answers reads; one that a program is
+    streaming from is owned by that program, and fuser sees the name.
+    """
+    try:
+        out = subprocess.run(["fuser", "/dev/video0"],
+                             capture_output=True, text=True, timeout=3)
+        return bool(out.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def screen_time():

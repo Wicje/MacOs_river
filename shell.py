@@ -35,12 +35,14 @@ from .panels.missioncontrol import MissionControl  # noqa: E402
 from .panels.notificationcenter import NotificationCentre  # noqa: E402
 from .panels.spaces import Spaces  # noqa: E402
 from .panels.popup import StatusPopup  # noqa: E402
+from .macui.tray import Tray  # noqa: E402
 from .panels.settings import Settings  # noqa: E402
 from .panels.dock import Dock  # noqa: E402
 from .panels.dropdown import Dropdown  # noqa: E402
 from .panels.menubar import MenuBar  # noqa: E402
 from .panels.notch import Notch  # noqa: E402
 from .panels.desktopicons import DesktopIcons  # noqa: E402
+from .panels.desktopmenu import DesktopMenu  # noqa: E402
 from .panels.sensor import Sensor  # noqa: E402
 from .panels.snapzone import SnapZone  # noqa: E402
 from .panels.quicklook import QuickLook  # noqa: E402
@@ -86,11 +88,16 @@ class Shell:
         state.start_refresher()
         self.dropdown = Dropdown(self.metrics, self)
         self.menubar = MenuBar(self.metrics, self)
+        self.tray = Tray()
+        self.tray.on_change(lambda: GLib.idle_add(self.menubar.redraw))
         self.notch = Notch(self.metrics, self)
         self.dock = Dock(self.metrics, self)
         self.control_centre = ControlCentre(self.metrics, self)
         self.widgets = Widgets(self.metrics, self)
         self.desktop_icons = DesktopIcons(self.metrics, self)
+        # the receiver of the clicks of the empty desktop: mapped first,
+        # so it lies under the icons and the widget column
+        self.desktop_menu = DesktopMenu(self.metrics, self)
         self.switcher = Switcher(self.metrics, self)
         self.quicklook = QuickLook(self.metrics, self)
         self.stage_manager = StageManager(self.metrics, self)
@@ -125,7 +132,8 @@ class Shell:
         self.about = About(self.metrics, self)
         self.force_quit = ForceQuit(self.metrics, self)
         self.windows = [
-            self.menubar, self.notch, self.dock, self.widgets,
+            self.menubar, self.notch, self.dock, self.desktop_menu,
+            self.widgets,
             self.desktop_icons, self.switcher, self.quicklook,
             self.stage_manager, self.screenshot_hud, self.assistant,
             self.control_centre, self.dropdown, self.spotlight,
@@ -476,6 +484,9 @@ class Shell:
         self.notch.refresh()
         self.dock.refresh_running()
         self.spaces.refresh()
+        if hasattr(self, "tray"):
+            # the icons of the tray change with the state of their programs
+            self.tray.refresh()
         return True
 
     # -- menu plumbing -------------------------------------------------------
@@ -658,6 +669,62 @@ class Shell:
             popup.close()
         self.popups[kind].toggle(anchor_x)
 
+    def tray_item(self, item):
+        """The click on a menu bar extra: the item decides what it does."""
+        if hasattr(self, "tray"):
+            item.activate(self.tray._connection)
+
+    # -- the desktop itself --------------------------------------------------
+
+    def desktop_clicked(self):
+        """A click on the empty desk dismisses the open panels."""
+        for panel in (self.dropdown, self.control_centre, self.spotlight,
+                      self.notification_centre, self.launchpad,
+                      self.mission_control, self.assistant):
+            if panel.get_visible():
+                panel.hide()
+        self.close_menus()
+        for popup in self.popups.values():
+            popup.close()
+
+    def open_desktop_menu(self):
+        """The menu of the desktop of macOS: a new folder, the wall of
+        the desk, the widgets."""
+        rows = [
+            {"glyph": "grid", "label": "New Folder", "detail": "",
+             "active": False, "action": self.new_desktop_folder},
+            {"glyph": "sparkles", "label": "Change Wallpaper…",
+             "detail": "", "active": False,
+             "action": lambda: state.spawn(
+                 f"{os.path.expanduser('~/.config/river/wallpaper-pick.sh')}")},
+            {"glyph": "grid",
+             "label": ("Hide Widgets"
+                       if self.metrics.config.get("show_widgets", True)
+                       else "Show Widgets"),
+             "detail": "", "active": False,
+             "action": self.toggle_widgets},
+            {"glyph": "grid", "label": "System Settings…", "detail": "",
+             "active": False, "action": self.open_settings},
+        ]
+        menu = self.popups.get("desktop") or self.popups["wifi"]
+        menu.show_items("Desktop", rows)
+
+    def new_desktop_folder(self):
+        """A folder on the desk, named the way Finder names them."""
+        desktop = os.path.expanduser("~/Desktop")
+        name = "untitled folder"
+        path = os.path.join(desktop, name)
+        count = 2
+        while os.path.exists(path):
+            path = os.path.join(desktop, f"untitled folder {count}")
+            count += 1
+        try:
+            os.makedirs(path)
+        except OSError:
+            return
+        self.desktop_icons.refresh()
+        self.show_message("Desktop", f"“{os.path.basename(path)}” is new")
+
     # -- the dock's context menu --------------------------------------------
 
     def open_dock_menu(self, app, index):
@@ -665,8 +732,32 @@ class Shell:
         button."""
         from .panels import dock as dock_module
 
+        if app.get("id") == "trash":
+            rows = [
+                {"glyph": "grid", "label": "Open", "detail": "",
+                 "active": False,
+                 "action": lambda: state.spawn("dolphin trash:///")},
+                {"glyph": "close", "label": "Empty Trash", "detail": "",
+                 "active": False, "action": self.empty_trash},
+            ]
+            menu = self.popups.get("dock") or self.popups["wifi"]
+            menu.show_items("Trash", rows, anchor_x=None,
+                            anchor_y=int(self.metrics.height * 0.72))
+            return
+
         rows = []
         in_dock = any(item["id"] == app["id"] for item in dock_module.APPS)
+        if in_dock and index > 0 and index < len(dock_module.APPS):
+            rows.append({
+                "glyph": "grid", "label": "Move Left", "detail": "",
+                "active": False,
+                "action": lambda: self.move_in_dock(index, -1),
+            })
+            rows.append({
+                "glyph": "grid", "label": "Move Right", "detail": "",
+                "active": False,
+                "action": lambda: self.move_in_dock(index, 1),
+            })
         if in_dock:
             rows.append({
                 "glyph": "grid", "label": "Remove from Dock", "detail": "",
@@ -745,6 +836,55 @@ class Shell:
         dock_module.APPS.append(app)
         dock_module._save_apps(dock_module.APPS)
         self.dock.reload_apps()
+
+    def move_in_dock(self, index, delta):
+        """Move a dock icon one place to the left or the right."""
+        from .panels import dock as dock_module
+
+        other = index + delta
+        if not (0 <= other < len(dock_module.APPS)):
+            return
+        # the index counts the recent programs as well; the pinned list
+        # keeps its own order, so the recent programs cannot be moved
+        items = self.dock._items()
+        if index >= len(items) or not items[index].get("id"):
+            return
+        pinned_index = index
+        for item in dock_module.APPS:
+            if item["id"] == items[index]["id"]:
+                break
+            pinned_index -= 1
+        other_index = pinned_index + delta
+        if not (0 <= other_index < len(dock_module.APPS)):
+            return
+        position = dock_module.APPS.index(items[index])
+        other_pos = dock_module.APPS.index(dock_module.APPS[other_index])
+        dock_module.APPS[position], dock_module.APPS[other_pos] = (dock_module.
+            APPS[other_pos], dock_module.APPS[position])
+        dock_module._save_apps(dock_module.APPS)
+        self.dock.reload_apps()
+
+    def empty_trash(self):
+        """The trash of the machine, the way macOS empties it."""
+        import shutil
+        trash = os.path.expanduser("~/.local/share/Trash")
+        removed = 0
+        for subdir in ("files", "info"):
+            directory = os.path.join(trash, subdir)
+            if not os.path.isdir(directory):
+                continue
+            for name in os.listdir(directory):
+                path = os.path.join(directory, name)
+                try:
+                    if os.path.isdir(path) and not os.path.islink(path):
+                        shutil.rmtree(path)
+                    else:
+                        os.remove(path)
+                    removed += 1
+                except OSError:
+                    pass
+        self.show_message("Trash",
+                          f"{removed} items{" are" if removed != 1 else " is"} out")
 
     def quit_app(self, app_id):
         if not app_id:

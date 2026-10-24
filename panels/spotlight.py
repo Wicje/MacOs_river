@@ -10,6 +10,7 @@ from __future__ import annotations
 import ast
 import operator
 import os
+import re
 import subprocess
 
 import gi
@@ -24,6 +25,75 @@ from ..macui import panel as panel_module  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 MAX_RESULTS = 7
+
+# the arithmetic Spotlight can do, and the operations it is allowed to
+_CALC_OPS = {
+    ast.Add: operator.add, ast.Sub: operator.sub,
+    ast.Mult: operator.mul, ast.Div: operator.truediv,
+    ast.Mod: operator.mod, ast.Pow: operator.pow,
+    ast.FloorDiv: operator.floordiv,
+}
+
+
+def _calc(text):
+    """Arithmetic like macOS does in Spotlight: 2*(3+4) is 14.
+
+    The text is read as a tree, and only the operations in the table
+    above are allowed to stand in the tree, so no program text of the
+    user is ever run.
+    """
+    if not re.search(r"\d", text) or not re.search(r"[-+*/%(]", text):
+        return None
+    try:
+        tree = ast.parse(text, mode="eval")
+    except (SyntaxError, ValueError):
+        return None
+
+    def value(node):
+        if isinstance(node, ast.Expression):
+            return value(node.body)
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, (int, float)) and not \
+                    isinstance(node.value, bool):
+                return node.value
+            return None
+        if isinstance(node, ast.UnaryOp):
+            operand = value(node.operand)
+            if operand is None:
+                return None
+            if isinstance(node.op, ast.USub):
+                return -operand
+            if isinstance(node.op, ast.UAdd):
+                return operand
+            return None
+        if isinstance(node, ast.BinOp):
+            left, right = value(node.left), value(node.right)
+            if left is None or right is None:
+                return None
+            operation = _CALC_OPS.get(type(node.op))
+            if operation is None:
+                return None
+            try:
+                return operation(left, right)
+            except (ZeroDivisionError, OverflowError):
+                return None
+        return None
+
+    result = value(tree)
+    if result is None:
+        return None
+    if isinstance(result, int) or (isinstance(result, float)
+                                   and result.is_integer()):
+        return f"{int(result)}"
+    return f"{round(result, 6)}"
+
+
+def _calc_query(text):
+    """True when the text of the field is an arithmetic question."""
+    stripped = text.strip()
+    return bool(re.fullmatch(r"[\d()\s\+\-\*/%.]+", stripped)) and \
+        bool(re.search(r"\d", stripped)) and \
+        bool(re.search(r"[+\-*/]", stripped))
 
 
 class Spotlight(Panel):
@@ -108,6 +178,9 @@ class Spotlight(Panel):
             return []
         needle = text.lower()
         results = []
+        answer = _calc(text) if _calc_query(text) else None
+        if answer is not None:
+            results.append((f"= {answer}", answer, "calc"))
         for entry in apps.all_applications():
             label = entry.get("name") or ""
             if needle in label.lower():

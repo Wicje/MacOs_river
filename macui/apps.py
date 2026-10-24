@@ -52,6 +52,11 @@ ICON_DIRS = (
     "/var/lib/flatpak/exports/share/icons",
 )
 
+# the icons of macOS: the theme the shell dresses itself with comes
+# first, so a program gets its one icon and not the letter of a tile
+THEME_DIRS = ("~/.local/share/icons/WhiteSur",)
+THEME_SIZES = ("scalable", "128", "22", "16")
+
 # how long the entries are kept before they are read again, so a program
 # that is installed while the shell is running still shows up
 CACHE_TTL = 30.0
@@ -98,6 +103,18 @@ def icon_path(name):
         return None
     if os.path.isabs(name) and os.path.exists(name):
         return name
+    # the theme of macOS first: the icons keep their one look, and
+    # programs that would fall back on the icons of the machine or on
+    # the first letter of their name get dressed like macOS dresses them
+    for root in THEME_DIRS:
+        root = os.path.expanduser(root)
+        for scope in ("apps", "places", "categories", "devices", "status"):
+            for size in THEME_SIZES:
+                for suffix in (".svg", ".png"):
+                    candidate = os.path.join(
+                        root, scope, size, name + suffix)
+                    if os.path.exists(candidate):
+                        return candidate
     for root in ICON_DIRS:
         root = os.path.expanduser(root)
         if root.endswith("pixmaps"):

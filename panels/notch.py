@@ -122,6 +122,10 @@ class Notch(Panel):
         self._load_art()
         self._battery = state.battery_level()
         self._charging = state.battery_charging()
+        # the lights of the notch: macOS shows an orange dot while a
+        # program records, a green one while a camera streams
+        self._mic = state.mic_active()
+        self._camera = state.camera_active()
         self.redraw()
 
     def _load_art(self):
@@ -387,6 +391,21 @@ class Notch(Panel):
         draw.draw_text(cr, right, y + 20 * scale, detail,
                        m.font("notch_font_size") * 0.85, pal["text_faint"],
                        align="right", baseline="middle")
+        # the lights: green while the camera streams, orange while the
+        # microphone records, the way macOS warns that someone is
+        # listening
+        lights = []
+        if getattr(self, "_camera", False):
+            lights.append((0.21, 0.47, 0.91))
+        if getattr(self, "_mic", False):
+            lights.append((1.00, 0.58, 0.00))
+        if lights:
+            dot = 10 * scale
+            dot_x = pad
+            for color in lights:
+                draw.fill_squircle(cr, dot_x, y - dot / 2, dot, dot,
+                                   dot / 2, color, 2.0)
+                dot_x += dot + 6 * scale
 
     def _paint_calendar(self, cr, x, y, w, h, pal):
         """The little calendar the notch shows when nothing is playing."""

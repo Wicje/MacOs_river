@@ -148,6 +148,34 @@ class MenuBar(Panel):
 
         glyphs.spotlight(cr, right - glyph, (bar - glyph) / 2, glyph, pal["text"])
         self._spotlight_x = right - glyph
+        right -= glyph + m.px("status_gap")
+
+        # the menu bar extras, the programs of the tray: macOS tucks them
+        # in front of the system status icons, so they sit on this side
+        self._tray_x = []
+        tray = getattr(self.shell, "tray", None)
+        if tray is not None:
+            from gi.repository import Gdk as _Gdk
+            for item in tray.order():
+                height = m.px("status_glyph")
+                pixbuf = item.pixbuf(height)
+                if pixbuf is None:
+                    continue
+                iw = pixbuf.get_width()
+                ih = pixbuf.get_height()
+                factor = height / max(iw, ih)
+                dw = iw * factor
+                dh = ih * factor
+                cr.save()
+                cr.translate(right - dw, (bar - dh) / 2)
+                cr.scale(dw / iw, dh / ih)
+                _Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0)
+                cr.paint()
+                cr.restore()
+                if dw < 2:
+                    continue
+                self._tray_x.append((right - dw, dw, item))
+                right -= dw + m.px("status_gap") * 0.7
 
     # -- input ---------------------------------------------------------------
 
@@ -159,6 +187,15 @@ class MenuBar(Panel):
 
     def on_click(self, x, y, button):
         m = self.metrics
+        # the menu bar extras first: they live on the end the system
+        # status icons leave to the left
+        for slot_x, slot_w, item in getattr(self, "_tray_x", []):
+            if slot_x <= x <= slot_x + slot_w:
+                if button == 3:
+                    self._open_tray_menu(item)
+                else:
+                    self.shell.tray_item(item)
+                return True
         if hasattr(self, "_clock_x") and \
                 self._clock_x <= x <= self._clock_x + self._clock_w:
             self.shell.toggle_notification_centre()
@@ -202,3 +239,24 @@ class MenuBar(Panel):
                         self.shell.open_menu(title, entries, item["x"])
                         return True
         return False
+
+    def _open_tray_menu(self, item):
+        """The menu of a menu bar extra: what its program hands over."""
+        shell = self.shell
+        rows = []
+        for row in item.menu_rows():
+            if row["label"] == "---":
+                continue
+            rows.append({
+                "glyph": "grid",
+                "label": row["label"],
+                "detail": "",
+                "active": False,
+                "action": (lambda row_id=row["id"], it=item:
+                           it.click_menu_item(row_id)),
+            })
+        if rows:
+            menu = shell.popups.get("tray") or shell.popups["wifi"]
+            menu.show_items(item.title or item.id or "Menu", rows)
+        else:
+            item.context_menu(shell.tray._connection)
