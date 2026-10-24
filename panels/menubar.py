@@ -135,6 +135,13 @@ class MenuBar(Panel):
             self._battery_w = bw
             right -= bw + m.px("status_gap")
 
+        # the power profile, the way the Control Centre lists it
+        self._power = state.power_mode()
+        glyphs.energy(cr, right - glyph - 2 * s, (bar - glyph) / 2, glyph,
+                      pal["text"], self._power)
+        self._profile_x = right - glyph - 2 * s
+        right -= glyph + 2 * s + m.px("status_gap")
+
         wifi_on = state.wifi_enabled()
         wifi_color = pal["text"] if wifi_on else pal["text_faint"]
         glyphs.wifi(cr, right - glyph, (bar - glyph) / 2, glyph, wifi_color,
@@ -203,6 +210,10 @@ class MenuBar(Panel):
         if hasattr(self, "_battery_x") and \
                 self._battery_x <= x <= self._battery_x + self._battery_w:
             self.shell.open_popup("battery", x)
+            return True
+        if hasattr(self, "_profile_x") and \
+                self._profile_x <= x <= self._profile_x + m.px("status_glyph"):
+            self.shell.open_profiles_menu(x)
             return True
         if hasattr(self, "_wifi_x") and \
                 self._wifi_x <= x <= self._wifi_x + m.px("status_glyph"):

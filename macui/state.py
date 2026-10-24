@@ -155,6 +155,18 @@ def dnd_on():
 def power_mode():
     """The power profile the machine is running in."""
     out = run("powerprofilesctl get")
+    if "performance" in out:
+        return "performance"
+    if "power-saver" in out:
+        return "power-saver"
+    return "balanced"
+
+
+def set_power_mode(mode):
+    """Switch the power profile; the menu bar shows the one it sits in."""
+    if mode not in ("performance", "balanced", "power-saver"):
+        return
+    spawn(f"powerprofilesctl set {mode}")
     if "power-saver" in out:
         return "power-saver"
     if "performance" in out:

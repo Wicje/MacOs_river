@@ -375,6 +375,37 @@ def power(cr, x, y, size, color):
     cr.restore()
 
 
+def energy(cr, x, y, size, color, mode="balanced"):
+    """The power profile of the system, as the menu bar status tells it:
+    the bolt for performance, the half gauge for balanced, the little
+    battery for saving."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    if mode == "performance":
+        cr.move_to(x + 9.6 * s, y + 0.8 * s)
+        cr.line_to(x + 3.4 * s, y + 9.2 * s)
+        cr.line_to(x + 7.6 * s, y + 9.2 * s)
+        cr.line_to(x + 6.4 * s, y + 15.2 * s)
+        cr.line_to(x + 12.6 * s, y + 6.8 * s)
+        cr.line_to(x + 8.4 * s, y + 6.8 * s)
+        cr.close_path()
+        cr.fill()
+    elif mode == "power-saver":
+        battery(cr, x + 1 * s, y + 3.4 * s, size * 0.62, color, level=0.15)
+    else:
+        cx, cy, r = x + 8 * s, y + 8 * s, 6.2 * s
+        cr.set_line_width(1.5 * s)
+        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.stroke()
+        cr.new_sub_path()
+        cr.move_to(cx, cy)
+        cr.arc(cx, cy, r, -0.5 * math.pi, 0.5 * math.pi)
+        cr.close_path()
+        cr.fill()
+    cr.restore()
+
+
 def lock(cr, x, y, size, color):
     """A padlock."""
     s = _unit(cr, x, y, size)

@@ -13,7 +13,7 @@
     "dock_mode": "desktop",
     "notch_mode": "auto",
     "glass_opacity": 1.28,
-    "glass_tint": 0.04,
+    "glass_tint": 0.01,
     "cc_tiles": [
         "accessibility",
         "appearance",

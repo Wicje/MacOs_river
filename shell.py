@@ -668,6 +668,27 @@ class Shell:
             menu = self.popups["wifi"]
         menu.show_items("Focus", rows)
 
+    def open_profiles_menu(self, anchor_x=None):
+        """The power profiles, the way the battery zone lists them."""
+        current = state.power_mode()
+        labels = {
+            "performance": "High Power",
+            "balanced": "Balanced",
+            "power-saver": "Low Power",
+        }
+        rows = []
+        for mode, label in labels.items():
+            rows.append({
+                "glyph": "check" if current == mode else "",
+                "label": label,
+                "active": current == mode,
+                "action": (lambda mode=mode: state.set_power_mode(mode)),
+            })
+        menu = self.popups.get("profiles")
+        if menu is None:
+            menu = self.popups["wifi"]
+        menu.show_items("Power Profile", rows)
+
     def open_popup(self, kind, anchor_x=None):
         for popup in self.popups.values():
             popup.close()
