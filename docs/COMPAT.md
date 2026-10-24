@@ -31,3 +31,15 @@ Session-known footguns, re-stated because they recur:
   receive none**, even on empty space. Any panel that must be clicked
   on a layer below its neighbors needs an industry input-region that
   excludes live views (geometry available from `river.views()`).
+
+## round of 2026-10-24 evening (examined + touched)
+
+| component       | version   | what it touches, what breaks on update |
+|------------------|-----------|----------------------------------------|
+| SF Pro Text      | local, 26 faces | **installed already** (`fc-match "SF Pro Text"` → SF-Pro-Text-Regular.otf); glyph/rendering truth, nothing to install |
+| Inter            | inter-font 4.1-1 | fallback family baked into `macui/draw._font_desc` default family chain; keep |
+| paplay (pipewire-tools) | installed | `--volume=` takes **0..65536** linear, not 0.0..1.0 (`macui/sound.play` already converts) |
+| gtklock          | 4.0.0-1   | powerbar + playerctl module names (`playerctl-module.so`, `powerbar-module.so`) passed via `-m`; config keys are long-only (`--background`, `--time-format`); PAM file `/etc/pam.d/gtklock` ships with the package |
+| faster-whisper   | ~/venvs/voice (3.12.13) | called through `~/bin/_voice.py stt` at model `base`; upgrade ⇒ re-check dictation latency (model loads per call, ~8 s) |
+| wtype            | installed | stdin `-` types the transcript |
+| pw-record        | installed | `--rate 16000 --channels 1` to a wav path; **SIGINT** flushes a valid file, SIGKILL does not — kill the recorder gently for the dictation stop |
