@@ -101,6 +101,10 @@ class Shell:
         # the receiver of the clicks of the empty desktop: mapped first,
         # so it lies under the icons and the widget column
         self.desktop_menu = DesktopMenu(self.metrics, self)
+        # the edge light is mapped first, so it sits under every panel:
+        # it is a light around the picture, not one of the panels
+        from .panels.edgelight import EdgeLight  # noqa: E402
+        self.edge_light = EdgeLight(self.metrics)
         self.switcher = Switcher(self.metrics, self)
         self.quicklook = QuickLook(self.metrics, self)
         self.stage_manager = StageManager(self.metrics, self)
@@ -135,6 +139,7 @@ class Shell:
         self.about = About(self.metrics, self)
         self.force_quit = ForceQuit(self.metrics, self)
         self.windows = [
+            self.edge_light,
             self.menubar, self.notch, self.dock, self.desktop_menu,
             self.widgets,
             self.desktop_icons, self.switcher, self.quicklook,
@@ -170,6 +175,8 @@ class Shell:
         self.widgets.set_visible(self.metrics.config.get("show_widgets", True))
         self.desktop_icons.set_visible(
             self.metrics.config.get("show_desktop_icons", True))
+        # the edge light waits until it is switched on or a call begins
+        self.edge_light.hide()
         # the dock and the notch decide for themselves whether they belong
         # on the screen: the desktop shows the dock, an application hides it
         self._sync_panels()
@@ -294,6 +301,9 @@ class Shell:
             self.open_settings()
         elif command == "clipboard":
             self.open_clipboard()
+        elif command == "edgelight":
+            self.cycle_edge_light()
+            self._refresh_state()
         elif command == "focus":
             self.open_focus_menu()
         elif command == "screenshot":
@@ -491,6 +501,7 @@ class Shell:
         self.notch.refresh()
         self.dock.refresh_running()
         self.spaces.refresh()
+        self.edge_light.refresh()
         if hasattr(self, "tray"):
             # the icons of the tray change with the state of their programs
             self.tray.refresh()
@@ -1006,6 +1017,17 @@ class Shell:
         visible = not self.metrics.config.get("show_widgets", True)
         self._set_config("show_widgets", visible)
         self.widgets.set_visible(visible)
+
+    def cycle_edge_light(self):
+        """The Edge Light: off, auto (during a call), then always on."""
+        order = ["off", "auto", "on"]
+        mode = self.metrics.config.get("edge_light_mode", "off")
+        try:
+            mode = order[(order.index(mode) + 1) % len(order)]
+        except ValueError:
+            mode = "off"
+        self._set_config("edge_light_mode", mode)
+        self.edge_light.refresh()
 
     def toggle_desktop_icons(self):
         visible = not self.metrics.config.get("show_desktop_icons", True)

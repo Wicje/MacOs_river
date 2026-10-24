@@ -67,6 +67,11 @@ BASE = {
     "widget_gap": 10,
     "widget_screen_h": 96,
     "widget_dev_h": 74,
+    "edge_light_mode": "auto",
+    "edge_light_width": 48,
+    "edge_light_intensity": 0.55,
+    "edge_light_temp": 0.3,
+    "edge_light_radius": 22,
     "widget_weather_h": 64,
     # notch
     "notch_width": 520,

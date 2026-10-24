@@ -114,13 +114,14 @@ class EdgeLight(Panel):
         cr.set_antialias(2)  # best
         for i in range(layers):
             inset = i * band
-            falloff = (1.0 - i / layers) ** 2.2
+            falloff = (1.0 - i / layers) ** 2.8
+            # the first band glows, the rest fall like light does
             cr.new_sub_path()
             _ring(cr, inset, inset, width - inset * 2, height - inset * 2,
                   max(0.0, radius - inset))
             cr.set_source_rgba(colour[0], colour[1], colour[2],
-                               min(0.95, intensity * falloff))
-            cr.set_line_width(band * 1.15)
+                               min(0.9, intensity * falloff))
+            cr.set_line_width(band * 1.02)
             cr.stroke()
         cr.restore()
 

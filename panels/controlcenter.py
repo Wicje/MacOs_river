@@ -33,6 +33,7 @@ UTILITIES = [
     ("display", "display"),
     ("sound", "speaker"),
     ("dictation", "microphone"),
+    ("edgelight", "sun"),
 ]
 
 
@@ -454,6 +455,8 @@ class ControlCentre(Panel):
             return state.theme_name() == "dark"
         if region_id == "dictation":
             return state.dictation_active()
+        if region_id == "edgelight":
+            return self.metrics.config.get("edge_light_mode", "off") != "off"
         return False
 
     def _subtitle(self, region_id):
@@ -464,6 +467,10 @@ class ControlCentre(Panel):
             return "On" if state.dnd_on() else "Off"
         if region_id == "dictation":
             return "Recording…" if state.dictation_active() else ""
+        if region_id == "edgelight":
+            mode = self.metrics.config.get("edge_light_mode", "off")
+            return {"off": "Off", "auto": "Auto (call)",
+                    "on": "On"}.get(mode, "Off")
         return ""
 
     # -- input ---------------------------------------------------------------
@@ -553,6 +560,8 @@ class ControlCentre(Panel):
             self.shell.open_settings()
         elif region_id == "dictation":
             state.toggle_dictation()
+        elif region_id == "edgelight":
+            self.shell.cycle_edge_light()
         GLib.timeout_add(200, self.refresh)
 
     def _set_slider(self, region, x):

@@ -49,6 +49,8 @@ def _commands():
         ("Show the clipboard history", _fifo(fifo, "clipboard")),
         ("Tile the window to the left", _fifo(fifo, "tile:left")),
         ("Tile the window to the right", _fifo(fifo, "tile:right")),
+        ("Start or stop dictation", ("sh", "-c", "~/.config/macshell/bin/dictate")),
+        ("Edge Light: cycle off, auto, on", _fifo(fifo, "edgelight")),
         ("Empty the Trash",
          ("sh", "-c", "gio trash --empty 2>/dev/null || true")),
         ("Lock the screen",
