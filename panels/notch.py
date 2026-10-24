@@ -36,6 +36,7 @@ ACTIONS = [
     ("focus", "moon", "Focus"),
     ("screenshot", "camera", "Screenshot"),
     ("assistant", "sparkles", "Ask"),
+    ("dictation", "microphone", "Dictation"),
 ]
 
 
@@ -171,21 +172,46 @@ class Notch(Panel):
         cr.save()
         cr.translate(0, -self._offset)
 
-        # the card: a rounded rectangle hanging from the top edge, in the
-        # colours of the theme so the text stays readable
+        # the card: a rounded rectangle hanging from the top edge.  macOS
+        # paints the notch in ink that swallows the bar behind it, so the
+        # card reads as a hole in the picture, not as a window.
         cr.save()
         draw.rounded_path(cr, 0, 0, width, height, radius)
         cr.clip()
         dark = m.config.get("theme", "dark") == "dark"
+        # the bloom of the card into the bar behind it, painted first so
+        # the card lands on top of its own shadow
+        cr.restore()
+        cr.save()
+        for band, alpha in ((3.5, 0.16), (7.0, 0.08), (11.0, 0.035)):
+            cr.new_sub_path()
+            draw.rounded_path(cr, band, band, width - band * 2,
+                              height - band * 2 + 6 * scale, radius)
+            cr.set_source_rgba(0.0, 0.0, 0.0, alpha if dark else alpha * 0.6)
+            cr.set_line_width(band)
+            cr.stroke()
+        cr.restore()
+        cr.save()
+        draw.rounded_path(cr, 0, 0, width, height, radius)
+        cr.clip()
         grad = cairo.LinearGradient(0, 0, 0, height)
         if dark:
-            grad.add_color_stop_rgba(0.0, 0.03, 0.03, 0.04, 1.0)
-            grad.add_color_stop_rgba(1.0, 0.06, 0.06, 0.08, 0.98)
+            grad.add_color_stop_rgba(0.0, 0.023, 0.023, 0.028, 1.0)
+            grad.add_color_stop_rgba(1.0, 0.055, 0.055, 0.07, 0.99)
         else:
             grad.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 0.97)
             grad.add_color_stop_rgba(1.0, 0.93, 0.93, 0.95, 0.95)
         cr.set_source(grad)
         cr.rectangle(0, 0, width, height)
+        cr.fill()
+        # the underside of the card catches the light, the way the glass
+        # of Tahoe carries a bright bottom edge
+        under = cairo.LinearGradient(0, height - 8 * scale, 0, height)
+        under.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 0.0)
+        under.add_color_stop_rgba(1.0, 1.0, 1.0, 1.0,
+                                  0.05 if dark else 0.0)
+        cr.set_source(under)
+        cr.rectangle(0, height - 8 * scale, width, 8 * scale)
         cr.fill()
         cr.restore()
         if not dark:
@@ -454,6 +480,8 @@ class Notch(Panel):
             lit.append("clipboard")
         if self._dnd:
             lit.append("focus")
+        if state.dictation_active():
+            lit.append("dictation")
         for index, (action, glyph, label) in enumerate(actions):
             col = index % 2
             row = index // 2
@@ -597,6 +625,9 @@ class Notch(Panel):
                              stderr=subprocess.DEVNULL)
         elif action == "assistant":
             self.shell.assistant.open("ask")
+        elif action == "dictation":
+            state.toggle_dictation()
+            self.refresh()
         elif action == "shuffle":
             _playerctl("shuffle")
             self.refresh()

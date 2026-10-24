@@ -267,7 +267,9 @@ def toggle_dictation():
               f'[ -n "$text" ] && printf "%s" "$text" | wtype -')
     else:
         spawn(f"sh -c 'pw-record --rate 16000 --channels 1 "
-              f"{DICTATION_WAV} & echo $! > {DICTATION_PID}'")
+              f"{DICTATION_WAV} & echo $! > {DICTATION_PID}'; "
+              "sleep 1; notify-send -a Dictation 'Dictation' "
+              "'Recording — speak now, click again to stop' -t 4000")
 
 
 def theme_name():
