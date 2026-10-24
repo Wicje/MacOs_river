@@ -345,6 +345,9 @@ class Spotlight(Panel):
             subprocess.Popen([program, *args], start_new_session=True,
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
+            if program == "sh" and "trash --empty" in " ".join(args):
+                from ..macui import sound
+                sound.play("trash")
             self.close()
             return
         if kind == "project-terminal":

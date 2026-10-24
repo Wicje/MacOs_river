@@ -86,6 +86,9 @@ class Shell:
     def __init__(self):
         self.metrics = Metrics()
         state.start_refresher()
+        # the start of the machine plays its chime, once the panels are up
+        from .macui import sound  # noqa: E402
+        GLib.timeout_add_seconds(2, lambda: (sound.startup(), False)[1])
         self.dropdown = Dropdown(self.metrics, self)
         self.menubar = MenuBar(self.metrics, self)
         self.tray = Tray()
