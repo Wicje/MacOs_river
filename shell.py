@@ -468,6 +468,10 @@ class Shell:
                 pass
             elif self._notch_until > now:
                 pass
+            elif getattr(self.notch, "_activities", None):
+                # the island takes part: something is happening, and the
+                # notch stays up to tell about it, the way macOS does
+                pass
             else:
                 show_notch = False
         if show_notch != self._notch_shown:

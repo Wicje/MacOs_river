@@ -89,6 +89,9 @@ class Notch(Panel):
         self._buttons: list = []
         self._battery = None
         self._charging = False
+        self._activities = []
+        self._flash = []
+        self._activity = None
 
     def input_rects(self):
         """Only the card takes the pointer.
@@ -126,6 +129,14 @@ class Notch(Panel):
         # program records, a green one while a camera streams
         self._mic = state.mic_active()
         self._camera = state.camera_active()
+        # the island: whatever is happening, strongest activity first
+        self._activities = state.activities()
+        self._flash = [row for row in self._activities
+                       if row["priority"] == "background"]
+        self._activity = next((row for row in self._activities
+                               if row["priority"] in ("critical", "high",
+                                                      "normal", "low")),
+                              None)
         self.redraw()
 
     def _load_art(self):
@@ -187,7 +198,15 @@ class Notch(Panel):
 
         clip = self._clip or {}
         fresh = clip and (time.time() - clip.get("at", 0)) < 25
-        if media:
+        if self._activity is not None:
+            self._paint_activity(cr, width, height, pad, scale, pal,
+                                 self._activity)
+        elif self._flash:
+            # a finished thing pays a short visit: the accent side of the
+            # card, so it is seen without shouting
+            self._paint_flash(cr, width, height, pad, scale, pal,
+                              self._flash[0])
+        elif media:
             self._paint_media(cr, width, height, pad, scale, pal)
         elif fresh:
             self._paint_clipboard(cr, width, height, pad, scale, pal, clip)
@@ -200,6 +219,84 @@ class Notch(Panel):
         self._paint_clock(cr, width, height, pad, scale, pal)
 
         cr.restore()
+
+    # -- the island activity card ---------------------------------------------
+
+    _ACTIVITY_GLYPHS = {
+        "download": "shield",  # keeper until a download glyph exists
+        "recover": "moon",
+    }
+
+    def _paint_activity(self, cr, width, height, pad, scale, pal, row):
+        """The island card: what is happening, with progress if it has any."""
+        m = self.metrics
+        title = (row.get("title") or "").strip()
+        detail = row.get("detail") or ""
+        progress = row.get("progress")
+        if not isinstance(progress, (int, float)) or not 0.0 <= progress <= 1.0:
+            progress = None
+        kind = (row.get("kind") or "generic").lower()
+        glyph = self._ACTIVITY_GLYPHS.get(kind, "sparkles")
+
+        box = 38 * scale
+        strong = row["priority"] in ("critical", "high")
+        if strong:
+            color = (*pal["accent"], 0.18)
+        else:
+            color = pal["fill_hover"]
+        draw.fill_squircle(cr, pad, 18 * scale, box, box, 10 * scale, color)
+        glyph = self._ACTIVITY_GLYPHS.get(kind)
+        if glyph and hasattr(glyphs, glyph):
+            self._draw_glyph(cr, glyph, pad + (box - 20 * scale) / 2,
+                             18 * scale + (box - 20 * scale) / 2, 20 * scale,
+                             pal["text"] if strong else pal["text_dim"])
+        else:
+            draw.draw_text(cr, pad + box / 2, 18 * scale + box / 2,
+                           (title[0].upper() if title else (kind[0].upper()
+                            if kind else "?")),
+                           16 * scale, pal["text"], weight="bold",
+                           align="center", baseline="middle")
+
+        text_x = pad + box + 14 * scale
+        draw.draw_text(cr, text_x, 32 * scale, title or "…",
+                       m.font("notch_font_size") * 1.15, pal["text"],
+                       weight="bold", baseline="middle",
+                       max_width=200 * scale, ellipsize=True)
+        if detail:
+            draw.draw_text(cr, text_x, 54 * scale, detail,
+                           m.font("notch_font_size") * 0.92, pal["text_dim"],
+                           baseline="middle", max_width=200 * scale,
+                           ellipsize=True)
+        if progress is None:
+            draw.draw_text(cr, width - 150 * scale, 40 * scale,
+                           row["priority"].upper(), 10 * scale,
+                           pal["text_faint"], align="right",
+                           baseline="middle")
+            return
+
+        right = width - 150 * scale
+        draw.draw_text(cr, right, 40 * scale, f"{int(progress * 100)}%",
+                       15 * scale, pal["text"], weight="bold",
+                       align="right", baseline="middle")
+        bar_x = 96 * scale
+        bar_y = 108 * scale
+        bar_w = right - 14 * scale - bar_x
+        draw.fill_squircle(cr, bar_x, bar_y - 1.5 * scale, bar_w, 3 * scale,
+                           1.5 * scale, pal["fill_hover"], 2.0)
+        draw.fill_squircle(cr, bar_x, bar_y - 1.5 * scale, bar_w * progress,
+                           3 * scale, 1.5 * scale, pal["text"], 2.0)
+        self._buttons.append(("activity", pad, 18 * scale,
+                              int(width - 150 * scale - pad)))
+
+    def _paint_flash(self, cr, width, height, pad, scale, pal, row):
+        """A completed activity, paying a short accent visit."""
+        m = self.metrics
+        draw.draw_text(cr, pad, 26 * scale, "done", 10 * scale,
+                       pal["accent"], weight="bold", baseline="middle")
+        draw.draw_text(cr, pad, 48 * scale, row.get("title") or "",
+                       m.font("notch_font_size") * 1.05, pal["text"],
+                       weight="bold", baseline="middle",
+                       max_width=240 * scale, ellipsize=True)
 
     # -- the media card ------------------------------------------------------
 
@@ -477,6 +574,16 @@ class Notch(Panel):
         return False
 
     def _activate(self, action):
+        if action == "activity":
+            row = self._activity
+            open_cmd = (row or {}).get("open")
+            if open_cmd:
+                subprocess.Popen(["sh", "-c", open_cmd],
+                                 start_new_session=True,
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+                self.shell.desktop_clicked()
+            return
         if action in ("previous", "play-pause", "next", "shuffle", "love"):
             _playerctl(action)
             self.refresh()

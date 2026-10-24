@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""Publish an activity to the island.
+
+macOS blooms the notch around the top of the screen when something is
+happening.  This command is the way any program on the desk takes part:
+
+    mac-activity start build --title "DEV SERVER" --detail "port 3000"
+    mac-activity start tests --title "TESTS" --detail "42/120"
+        --progress 0.35 --priority normal --open foot
+    mac-activity update tests --progress 0.9 --detail "108/120"
+    mac-activity finish tests            # an accent flash for ten seconds
+    mac-activity forget build
+
+The priorities, strongest first: critical, high, normal, low,
+background.  The island shows the strongest one; a finished activity
+pays a short visit in the accent colour.  Writing "not into that row" is
+not a thing here: every entry is small JSON, and the shell rereads it
+every tick.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+
+FILE = "/tmp/macshell-activity.json"
+PRIORITIES = ("critical", "high", "normal", "low", "background")
+
+
+def read():
+    try:
+        with open(FILE) as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    return data.get("items") or []
+
+
+def write(items):
+    tmp = f"{FILE}.{os.getpid()}"
+    try:
+        with open(tmp, "w") as fh:
+            json.dump({"items": items}, fh)
+        os.replace(tmp, FILE)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def find(items, wanted):
+    for index, item in enumerate(items):
+        if item.get("id") == wanted:
+            return index
+    return -1
+
+
+def make_parser():
+    parser = argparse.ArgumentParser(
+        prog="mac-activity",
+        description="Publish an activity to the island.")
+    checks = parser.add_subparsers(dest="command", required=True)
+
+    for name in ("start", "update"):
+        child = checks.add_parser(name)
+        child.add_argument("id")
+        child.add_argument("--title")
+        child.add_argument("--detail")
+        child.add_argument("--progress", type=float)
+        child.add_argument("--kind",
+                           help="build, tests, download, recovery, server…")
+        child.add_argument("--priority", choices=PRIORITIES, default="normal")
+        child.add_argument("--open", dest="open_cmd",
+                           help="a shell command to run on click")
+        child.add_argument("--expires", type=float,
+                           help="seconds from now, after which it goes away")
+
+    done = checks.add_parser("finish")
+    done.add_argument("id")
+    done.add_argument("--flash", type=float, default=10.0,
+                      help="seconds the finished card stays (default 10)")
+
+    checks.add_parser("forget").add_argument("id")
+    checks.add_parser("clear")
+    parser.add_argument("--raw", action="store_true",
+                        help="print nothing, act quietly")
+    return parser
+
+
+def main(argv):
+    options = make_parser().parse_args(argv)
+    items = read()
+
+    if options.command == "clear":
+        write([])
+        print("cleared")
+        return 0
+
+    if options.command == "forget":
+        index = find(items, options.id)
+        del items[index:index + 1]
+        write(items)
+        print(f"forgot {options.id}")
+        return 0
+
+    index = find(items, options.id)
+    row = items[index] if index >= 0 else {}
+    row.setdefault("id", options.id)
+
+    if options.command == "finish":
+        row["priority"] = "background"
+        row["expires"] = time.time() + options.flash
+        row.pop("progress", None)
+    else:
+        for name, key in (("title", "title"), ("detail", "detail")):
+            value = getattr(options, key, None)
+            if value is not None:
+                row[key] = value
+        if options.progress is not None:
+            row["progress"] = max(0.0, min(1.0, options.progress))
+        elif options.command == "start":
+            row.setdefault("progress", None)
+        if options.kind:
+            row["kind"] = options.kind
+        if options.open_cmd:
+            row["open"] = options.open_cmd
+        if options.command == "start":
+            row["priority"] = options.priority
+        if options.expires is not None:
+            row["expires"] = time.time() + options.expires
+    row.pop("done_at", None)
+    if index < 0:
+        items.append(row)
+    else:
+        items[index] = row
+    write(items)
+    print(f"{options.id}: {row['priority']} "
+          f"{row.get('progress') if isinstance(row.get('progress'), float) else '—'}")
+    return 0
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

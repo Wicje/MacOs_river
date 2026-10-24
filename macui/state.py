@@ -720,6 +720,46 @@ def camera_active():
         return False
 
 
+# --- the island: activities -------------------------------------------------
+#
+# The Dynamic Island shows whatever is happening now, and the strongest
+# activity wins.  These live in a small file that any program on the desk
+# can write, the same way macOS apps publish to the island.
+
+ACTIVITY_FILE = "/tmp/macshell-activity.json"
+_PRIORITIES = ("background", "low", "normal", "high", "critical")
+
+
+def activities():
+    """The activities of the island, strongest first.
+
+    Every entry carries id, title, detail, progress (0 to 1), priority and
+    an optional expires epoch, past which the entry no longer shows
+    however nothing prunes it early.
+    """
+    data = None
+    try:
+        with open(ACTIVITY_FILE) as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    now = time.time()
+    rows = []
+    for entry in (data or {}).get("items") or []:
+        if not isinstance(entry, dict):
+            continue
+        expires = entry.get("expires")
+        if isinstance(expires, (int, float)) and expires <= now:
+            continue
+        priority = entry.get("priority") or "normal"
+        if priority not in _PRIORITIES:
+            priority = "normal"
+        rows.append(entry)
+    rows.sort(key=lambda row: _PRIORITIES.index(row["priority"]),
+              reverse=True)
+    return rows
+
+
 def screen_time():
     """The minutes every application was in the foreground today."""
     today = time.strftime("%Y-%m-%d")
