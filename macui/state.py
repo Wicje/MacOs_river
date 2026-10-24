@@ -10,6 +10,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -224,6 +225,45 @@ def set_dnd_mode(mode):
 
 def toggle_dnd():
     spawn("makoctl mode -t do-not-disturb")
+
+
+# --- the dictation button ---------------------------------------------------
+
+DICTATION_PID = "/tmp/dictation.pid"
+DICTATION_WAV = "/tmp/dictation.wav"
+_VOICE = f"{os.path.expanduser('~')}/venvs/voice/bin/python"
+_VOICE_STT = f"{os.path.expanduser('~')}/bin/_voice.py"
+
+
+def dictation_active():
+    """Whether the microphone is recording for the dictation button."""
+    try:
+        with open(DICTATION_PID) as fh:
+            pid = int(fh.read().strip())
+    except (OSError, ValueError):
+        return False
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            return b"pw-record" in fh.read()
+    except OSError:
+        return False
+
+
+def toggle_dictation():
+    """Start the microphone, and stop it by typing what was said."""
+    if dictation_active():
+        try:
+            with open(DICTATION_PID) as fh:
+                pid = int(fh.read().strip())
+            os.kill(pid, signal.SIGINT)
+        except (OSError, ValueError):
+            pass
+        spawn(f'sh -c text=$("{_VOICE}" "{_VOICE_STT}" stt "{DICTATION_WAV}" '
+              '--language en --model base 2>/dev/null); '
+              f'[ -n "$text" ] && printf "%s" "$text" | wtype -')
+    else:
+        spawn(f"sh -c 'pw-record --rate 16000 --channels 1 "
+              f"{DICTATION_WAV} & echo $! > {DICTATION_PID}'")
 
 
 def theme_name():

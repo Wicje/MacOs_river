@@ -32,6 +32,7 @@ UTILITIES = [
     ("mirror", "airplay"),
     ("display", "display"),
     ("sound", "speaker"),
+    ("dictation", "microphone"),
 ]
 
 
@@ -451,6 +452,8 @@ class ControlCentre(Panel):
             return state.dnd_on()
         if region_id == "appearance":
             return state.theme_name() == "dark"
+        if region_id == "dictation":
+            return state.dictation_active()
         return False
 
     def _subtitle(self, region_id):
@@ -459,6 +462,8 @@ class ControlCentre(Panel):
             return ssid if ssid else ("On" if state.wifi_enabled() else "Off")
         if region_id == "focus":
             return "On" if state.dnd_on() else "Off"
+        if region_id == "dictation":
+            return "Recording…" if state.dictation_active() else ""
         return ""
 
     # -- input ---------------------------------------------------------------
@@ -546,6 +551,8 @@ class ControlCentre(Panel):
             state.spawn(f"{os.path.expanduser('~/.config/river/wallpaper-pick.sh')}")
         elif region_id == "settings":
             self.shell.open_settings()
+        elif region_id == "dictation":
+            state.toggle_dictation()
         GLib.timeout_add(200, self.refresh)
 
     def _set_slider(self, region, x):
