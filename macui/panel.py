@@ -250,14 +250,17 @@ class Panel(Gtk.Window):
             self._offset = target
             self.area.queue_draw()
             self._slide_source = None
+            self.update_input_region()
             done = self._offset_done
             self._offset_done = None
-            self.update_input_region()
             if done:
                 done()
             return False
         self._offset = current + (target - current) * 0.4
         self.area.queue_draw()
+        # while it slides, the shelves of the surface move, and so does the
+        # region of the surface the pointer belongs to
+        self.update_input_region()
         return True
 
     # -- geometry helpers ---------------------------------------------------

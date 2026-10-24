@@ -260,6 +260,10 @@ def toggle_dictation():
             pass
         spawn(f'sh -c text=$("{_VOICE}" "{_VOICE_STT}" stt "{DICTATION_WAV}" '
               '--language en --model base 2>/dev/null); '
+              'notify-send -a Dictation "Dictation" "Transcribing…" '
+              f'-t 8000 2>/dev/null; [ -n "$text" ] && '
+              'notify-send -a Dictation "Dictation" "Done." -t 2000 '
+              '2>/dev/null; '
               f'[ -n "$text" ] && printf "%s" "$text" | wtype -')
     else:
         spawn(f"sh -c 'pw-record --rate 16000 --channels 1 "

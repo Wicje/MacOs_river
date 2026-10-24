@@ -487,7 +487,7 @@ def microphone(cr, x, y, size, color):
     cr.stroke()
     cr.move_to(x + 5.4 * s, y + 5.6 * s)
     cr.line_to(x + 5.4 * s, y + 8.0 * s)
-    cr.arc(x + 8 * s, y + 8.0 * s, 2.6 * s, math.pi, 0, True)
+    cr.arc_negative(x + 8 * s, y + 8.0 * s, 2.6 * s, math.pi, 0)
     cr.stroke()
     # the stand
     cr.move_to(x + 8 * s, y + 10.6 * s)
