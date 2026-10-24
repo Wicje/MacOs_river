@@ -66,6 +66,7 @@ BASE = {
     "widget_pad": 10,
     "widget_gap": 10,
     "widget_screen_h": 96,
+    "widget_dev_h": 74,
     "widget_weather_h": 64,
     # notch
     "notch_width": 520,

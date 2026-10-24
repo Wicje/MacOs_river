@@ -191,7 +191,22 @@ def dnd_mode():
 
 
 def set_dnd_mode(mode):
-    """Switch to a focus mode."""
+    """Switch to a focus mode.
+
+    The hour the mode began is written down, so the focus timer of the
+    widget column knows how long the session has been.
+    """
+    if mode and mode != "off":
+        try:
+            with open(FOCUS_FILE, "w") as fh:
+                fh.write(str(time.time()))
+        except OSError:
+            pass
+    else:
+        try:
+            os.unlink(FOCUS_FILE)
+        except OSError:
+            pass
     spawn(f"makoctl mode -t {mode}")
 
 
@@ -795,3 +810,54 @@ def start_refresher():
     thread = threading.Thread(target=_refresh_loop, daemon=True)
     thread.start()
     return thread
+
+
+# --- the development widget -------------------------------------------------
+
+FOCUS_FILE = "/tmp/macshell-focus-start"
+
+
+def dev_project(path):
+    """The state of the project's git, for the dev widget.
+
+    (branch, dirty count, and how long ago the last commit was made) —
+    the whole thing fails quietly, so a folder that is not a repository
+    shows an honest empty row.
+    """
+    if not path:
+        return "", 0, 0.0
+    try:
+        out = subprocess.run(
+            ["git", "-C", path, "branch", "--show-current"],
+            capture_output=True, text=True, timeout=3)
+        branch = out.stdout.strip()
+        out = subprocess.run(
+            ["git", "-C", path, "status", "--porcelain"],
+            capture_output=True, text=True, timeout=3)
+        dirty = len([line for line in out.stdout.splitlines()
+                     if line.strip()])
+        out = subprocess.run(
+            ["git", "-C", path, "log", "-1", "--format=%ct"],
+            capture_output=True, text=True, timeout=3)
+        stamp = float(out.stdout.strip() or 0)
+        age = max(0.0, time.time() - stamp) if stamp else 0.0
+        return branch, dirty, age
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return "", 0, 0.0
+
+
+def focus_started():
+    """When the present focus mode began (None when it is off)."""
+    try:
+        with open(FOCUS_FILE) as fh:
+            return float(fh.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def focus_minutes():
+    """How long the focus mode has been on, in minutes."""
+    started = focus_started()
+    if started is None:
+        return 0
+    return int((time.time() - started) / 60.0)

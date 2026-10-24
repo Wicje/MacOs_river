@@ -936,6 +936,10 @@ class Shell:
     def switch_tag(self, tag):
         self._tag = tag
         actions.switch_tag(tag)
+        # the dock owns a row per workspace: coding keeps its tools,
+        # research the reader, and the media desk its players
+        if hasattr(self, "dock"):
+            self.dock.refresh_span(tag)
     # -- panel visibility ----------------------------------------------------
 
     def _set_config(self, key, value):

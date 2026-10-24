@@ -57,6 +57,9 @@ def _load_apps():
             saved = json.load(fh)
     except (OSError, ValueError):
         return list(DEFAULT_APPS)
+    if isinstance(saved, dict):
+        # the new way: the row of the dock and the row of every tag
+        saved = saved.get("apps")
     if not isinstance(saved, list):
         return list(DEFAULT_APPS)
     apps = []
@@ -83,15 +86,43 @@ def _load_apps():
 def _save_apps(apps):
     """The dock keeps the whole entry, so a new program can be added."""
     try:
+        try:
+            with open(DOCK_CONFIG) as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        data["apps"] = apps
         os.makedirs(os.path.dirname(DOCK_CONFIG), exist_ok=True)
         with open(DOCK_CONFIG, "w") as fh:
-            json.dump(apps, fh, indent=4)
+            json.dump(data, fh, indent=4)
     except OSError:
         pass
 
 
+def _tag_rows():
+    """The programs every workspace shows in its own dock row.
+
+    River's tags are the workspaces; the config can name the dock row a
+    tag belongs with (the working desk shows its tools, the research
+    desk the reader).  A tag without a row keeps the whole dock.
+    """
+    try:
+        with open(DOCK_CONFIG) as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    rows = (data or {}).get("tags")
+    if not isinstance(rows, dict):
+        return {}
+    return {str(tag): ids for tag, ids in rows.items()
+            if isinstance(ids, list)}
+
+
 APPS = _load_apps()
 
+APP_IDS = {entry["id"] for entry in DEFAULT_APPS}
 TRASH = {"id": "trash", "label": "Trash", "cmd": "dolphin trash:///"}
 
 TOOLTIP_SPACE = 30
@@ -190,6 +221,7 @@ class Dock(Panel):
         self.set_horizontal_offset(int((screen - width) / 2))
         self._running = self._detect_running()
         self._windows = self._window_map()
+        self._tag = 1
 
     # -- running apps --------------------------------------------------------
 
@@ -200,6 +232,11 @@ class Dock(Panel):
         so the dock does the same.
         """
         items = list(APPS)
+        # the workspace's own row: a tag can pin the tools of the desk
+        row = self._tag_rows().get(str(getattr(self, "_tag", 1)))
+        if row:
+            wanted = {str(entry) for entry in row}
+            items = [entry for entry in APPS if str(entry["id"]) in wanted]
         known = {item["id"] for item in items}
         for app_id in state.recent_apps():
             label = state.friendly_name(app_id)
@@ -279,6 +316,14 @@ class Dock(Panel):
             self._targets = list(self._sizes)
             self._resize()
         self.redraw()
+
+    def _tag_rows(self):
+        return _tag_rows()
+
+    def refresh_span(self, tag):
+        """The workspace changed, so the dock shows its row."""
+        self._tag = int(tag)
+        self.reload_apps()
 
     def reload_apps(self):
         """Pick up a changed list of dock items."""

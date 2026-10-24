@@ -20,11 +20,40 @@ gi.require_version("Gdk", "3.0")
 
 from gi.repository import Gdk, Gtk  # noqa: E402
 
-from ..macui import apps, draw, glyphs  # noqa: E402
+from ..macui import apps, draw, glyphs, state  # noqa: E402
 from ..macui import panel as panel_module  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 MAX_RESULTS = 7
+
+# the projects of the desk, with the verbs each one offers: name, path,
+# the last sentence about it that the rows show
+PROJECTS = [
+    ("macshell", "~/.config/macshell", "the macOS shell of this desk"),
+    ("mac", "~/mac", "the pictures and reference of the desk"),
+]
+
+
+def _fifo(fifo, text):
+    """A command through the fifo, safely: the shell interprets a small
+    list of commands and never arbitrary text."""
+    return ("sh", "-c",
+            'printf "%s\\n" "{0}" > "{1}"'.format(text, fifo))
+
+
+def _commands():
+    """The palette: fixed verbs the shell runs directly."""
+    fifo = os.environ.get("XDG_RUNTIME_DIR", "") + "/macshell.cmd"
+    return [
+        ("Open Launchpad", _fifo(fifo, "launchpad")),
+        ("Show the clipboard history", _fifo(fifo, "clipboard")),
+        ("Tile the window to the left", _fifo(fifo, "tile:left")),
+        ("Tile the window to the right", _fifo(fifo, "tile:right")),
+        ("Empty the Trash",
+         ("sh", "-c", "gio trash --empty 2>/dev/null || true")),
+        ("Lock the screen",
+         ("sh", "-c", "~/.config/river/lock.sh")),
+    ]
 
 # the arithmetic Spotlight can do, and the operations it is allowed to
 _CALC_OPS = {
@@ -33,6 +62,21 @@ _CALC_OPS = {
     ast.Mod: operator.mod, ast.Pow: operator.pow,
     ast.FloorDiv: operator.floordiv,
 }
+
+
+import difflib
+
+# fuzzy ranking collar: the ratio between the typed text and the label,
+# with an extra point for a prefix and for the programs that were
+# recently in front
+def _score(label, needle):
+    low = label.lower()
+    if low.startswith(needle):
+        return 0.0
+    within = low.find(needle)
+    if within > 0:
+        return 0.2 + within * 0.01
+    return 1.0 - difflib.SequenceMatcher(None, low, needle).ratio()
 
 
 def _calc(text):
@@ -181,22 +225,98 @@ class Spotlight(Panel):
         answer = _calc(text) if _calc_query(text) else None
         if answer is not None:
             results.append((f"= {answer}", answer, "calc"))
+
+        # the projects of the desk, with the verbs they offer
+        results.extend(self._projects(text))
+        # the history of the clipboard, when the word asked for it
+        results.extend(self._clipboard_rows(text))
+
+        # the palette, the apps and the folders of home, fuzzy and
+        # ranked: a prefix wins, being recently in front wins, and a
+        # far-off match is dropped instead of buried
+        recent = state.recent_apps()
+        ranked = []
+        for label, payload in _commands():
+            score = _score(label, needle)
+            if score > 0.42:
+                continue
+            ranked.append((score, label, payload, "command"))
         for entry in apps.all_applications():
             label = entry.get("name") or ""
-            if needle in label.lower():
-                results.append((label, entry.get("exec") or "", "app"))
+            score = _score(label, needle)
+            if score > 0.42:
+                continue
+            for index, app_id in enumerate(recent):
+                if state.friendly_name(app_id).lower() == label.lower():
+                    score -= max(0.02, 0.18 - index * 0.03)
+            ranked.append((score, label, entry.get("exec") or "", "app"))
+        ranked.sort(key=lambda row: (row[0], row[1].lower()))
+        results.extend((label, command, kind)
+                       for score, label, command, kind in ranked)
+
         home = os.path.expanduser("~")
         try:
             for entry in sorted(os.listdir(home))[:400]:
                 if needle in entry.lower():
-                    results.append((entry, os.path.join(home, entry), "folder"))
+                    results.append((entry, os.path.join(home, entry),
+                                    "folder"))
         except OSError:
             pass
-        results.sort(key=lambda item: (not item[0].lower().startswith(needle),
-                                       len(item[0])))
         results = results[:MAX_RESULTS]
-        results.append((f"Search the web for \u201c{text}\u201d", text, "web"))
+        results.append((f"Search the web for “{text}”", text, "web"))
         return results
+
+    def _projects(self, text):
+        """The rows a project offers when its name has been typed."""
+        needle = text.lower()
+        rows = []
+        for name, path, _tagline in PROJECTS:
+            if needle in name:
+                payload = os.path.expanduser(path)
+                rows.append((f"Open {name} in Finder", payload, "project"))
+                rows.append((f"Terminal at {name}",
+                             payload, "project-terminal"))
+        return rows
+
+    def _clipboard_rows(self, text):
+        """The last entries of the clipboard, for the word clipboard."""
+        if "clipboard" not in text.lower():
+            return []
+        out = state.run("cliphist list")
+        rows = []
+        for line in out.splitlines()[:4]:
+            entry_id, _, piece = line.partition("\t")
+            if not piece:
+                continue
+            rows.append((piece.strip()[:60] or "an image",
+                         entry_id, "clip"))
+        return rows
+
+    def _projects(self, text):
+        """The rows a project offers when its name has been typed."""
+        needle = text.lower()
+        rows = []
+        for name, path, tagline in PROJECTS:
+            if needle in name:
+                payload = os.path.expanduser(path)
+                rows.append((f"Open {name} in Finder", payload, "project"))
+                rows.append((f"Terminal at {name}",
+                             payload, "project-terminal"))
+        return rows
+
+    def _clipboard_rows(self, text):
+        """The last entries of the clipboard, for the word clipboard."""
+        if "clipboard" not in text.lower():
+            return []
+        out = run("cliphist list")
+        rows = []
+        for line in out.splitlines()[:4]:
+            entry_id, _, piece = line.partition("\t")
+            if not piece:
+                continue
+            rows.append((piece.strip()[:60] or "an image",
+                         entry_id, "clip"))
+        return rows
 
     def _on_changed(self, entry):
         text = entry.get_text().strip()
@@ -208,6 +328,28 @@ class Spotlight(Panel):
         label, command, kind = item
         if kind == "calc":
             subprocess.Popen(["wl-copy"], input=command.encode(),
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            self.close()
+            return
+        if kind == "clip":
+            # the entry of the history back to the clipboard
+            subprocess.Popen(["sh", "-c", "cliphist decode | wl-copy"],
+                             input=command.encode(),
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            self.close()
+            return
+        if kind == "command":
+            program, *args = command
+            subprocess.Popen([program, *args], start_new_session=True,
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            self.close()
+            return
+        if kind == "project-terminal":
+            subprocess.Popen(["foot", "-D", command],
+                             start_new_session=True,
                              stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
             self.close()
@@ -266,7 +408,10 @@ class Spotlight(Panel):
                                m.font("menu_font_size"), pal["text"],
                                baseline="middle")
                 caption = {"app": "Application", "folder": "Folder",
-                           "calc": "Calculator", "web": "Web"}.get(kind, "")
+                           "calc": "Calculator", "web": "Web",
+                           "clip": "Clipboard", "command": "Command",
+                           "project": "Project",
+                           "project-terminal": "Terminal"}.get(kind, "")
                 draw.draw_text(cr, x + w - 20 * m.scale, ry + row_h / 2,
                                caption, m.font("cc_font_size"), pal["text_faint"],
                                align="right", baseline="middle")

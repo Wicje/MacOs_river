@@ -73,7 +73,19 @@ def _uptime():
     if hours >= 24:
         days, hours = divmod(hours, 24)
         return f"{days}d {hours}h {minutes}m"
-    return f"{hours}h {minutes}m"
+        return f"{hours}h {minutes}m"
+
+
+def _age_words(seconds):
+    """A commit's age, the way macOS would spell it."""
+    minutes = int(seconds / 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    if days:
+        return f"{days}d ago"
+    if hours:
+        return f"{hours}h ago"
+    return f"{max(1, minutes)}m ago"
 
 
 class Widgets(Panel):
@@ -103,12 +115,18 @@ class Widgets(Panel):
         self._weather = state.weather()
         self._report = state.weather_report()
         self._uptime = _uptime()
+        self._dev = state.dev_project(
+            os.path.expanduser(
+                self.metrics.config.get("dev_project",
+                                        "~/.config/macshell")))
+        self._focus = state.focus_minutes()
+        self._dnd_mode = state.dnd_mode()
         self.redraw()
 
     def content_height(self):
         m = self.metrics
-        return int(m.px("widget_size") * 3 + m.px("widget_gap") * 4
-                   + m.px("widget_screen_h"))
+        return int(m.px("widget_size") * 3 + m.px("widget_gap") * 5
+                   + m.px("widget_screen_h") + m.px("widget_dev_h"))
 
     # -- painting ------------------------------------------------------------
 
@@ -140,6 +158,12 @@ class Widgets(Panel):
         time_h = m.px("widget_screen_h")
         self._tile(cr, 0, time_y, width, time_h, radius, pal)
         self._paint_screen_time(cr, 0, time_y, width, time_h, pal)
+
+        # the desk: the git of the project and the focus timer
+        dev_y = time_y + time_h + gap
+        dev_h = m.px("widget_dev_h")
+        self._tile(cr, 0, dev_y, width, dev_h, radius, pal)
+        self._paint_dev(cr, 0, dev_y, width, dev_h, pal)
 
     def _paint_weather(self, cr, x, y, w, h, pal):
         """The weather where the machine is, with the forecast below."""
@@ -370,3 +394,34 @@ class Widgets(Panel):
         draw.draw_text(cr, cx, cy + radius + width * 2.4, label,
                        radius * 0.28, pal["text_faint"],
                        align="center", baseline="middle")
+
+    # -- the development tile -------------------------------------------------
+
+    def _paint_dev(self, cr, x, y, w, h, pal):
+        """The desk of the developer: the branch of the project, how much
+        is uncommitted, the age of the last commit, and the focus timer."""
+        m = self.metrics
+        scale = m.scale
+        branch, dirty, age = getattr(self, "_dev", ("", 0, 0.0))
+
+        draw.draw_text(cr, x + 14 * scale, y + 22 * scale,
+                       (branch or "no project") + (f"  ·  {dirty} changed"
+                       if dirty else ""),
+                       m.font("menu_font_size"), pal["text"],
+                       weight="bold", baseline="middle",
+                       max_width=w - 28 * scale, ellipsize=True)
+        if age > 0:
+            draw.draw_text(cr, x + 14 * scale, y + 44 * scale,
+                           _age_words(age),
+                           m.font("cc_font_size"), pal["text_faint"],
+                           baseline="middle")
+
+        minutes = getattr(self, "_focus", 0)
+        if getattr(self, "_dnd_mode", "off") != "off":
+            name = {"do-not-disturb": "Focus",
+                    "work": "Work", "personal": "Personal",
+                    "sleep": "Sleep"}.get(self._dnd_mode, "Focus")
+            draw.draw_text(cr, x + 14 * scale, y + h - 14 * scale,
+                           f"{name} · {minutes}m",
+                           m.font("cc_font_size"), pal["accent"],
+                           weight="bold", baseline="middle")
