@@ -54,26 +54,16 @@ The dock says so now (the line that names the problem is the one that
 is shown), and the dock carries **Kitty** instead.  Kitty runs on this
 machine.
 
-## 3. The speech of the machine
+## 3. The speech of the machine — SOLVED 2026-10-24
 
-The voice tooling of the machine is there (`~/bin/vrec`, `vsay`, `vchat`),
-but it is a program in a terminal.  The shell has no button for it yet.
-
-What to build:
-
-* a small panel with a microphone, the way macOS has the dictation of
-  the keyboard settings: click, speak, and the text goes into the
-  window that has the focus;
-* the recording with `pw-record` (or `parec`), the transcription with
-  the faster-whisper of `~/venvs/voice`, and the text into the focused
-  window with `wtype` (or through the clipboard with `wl-copy` and
-  `wtype -k ctrl v`);
-* the place for the button: the notch has a row of round buttons
-  already, and the Control Centre has a tile for every switch.
-
-The whisper of the machine is slow (about eight seconds for a sentence,
-the model is loaded every time), so the panel should show that it is
-working and let the model stay loaded.
+The Control Centre has a **dictation** tile (mic glyph): first click
+starts `pw-record` (16 kHz mono → /tmp/dictation.wav, pid in
+/tmp/dictation.pid), the second click SIGINTs it (verified: SIGINT
+flushes a valid WAV, SIGKILL does not), notifies "Transcribing…", runs
+faster-whisper (`~/venvs/voice`, model `base`, ~8 s) and `wtype -`s the
+transcript into the focused window. NOT yet tried with a real
+recording, because the session was already in use. The model loads per
+call; if the latency matters, keep the venv warm (function to revisit).
 
 ## 4. Smaller things
 
@@ -88,10 +78,16 @@ working and let the model stay loaded.
 * The `snap zone` of the edges of the screen is gone (the edges belong
   to the applications now), but the README still offers it.  The
   keyboard tiling draws the same rectangle, and that part works.
-* The tiling with the quarters (`Control+Alt+1…4`) and with the top and
-  the bottom half (`Control+Alt+↑/↓`) does not do anything: the command
-  `tile:` hands only "left" and "right" to `Shell.snap_window`, and the
-  other zones are dropped on the way.
+* The tiling with the quarters (`Super+Control+1…4`) and with the top
+  and the bottom half (`Super+Control+↑/↓`) works since 2026-10-24:
+  the zones are mapped in `~/.config/river/init` **and** live-mapped;
+  `tile_window` already understood the edge strings.
+* The screen time resets when the day changes (`state._track_screen_time`
+  and `screen_time()` both compare the `day` key) — that entry was
+  outdated.
+* The sound of the machine is its own feature now: `macui/sound.py`
+  synthesizes the wavs (startup, trash, shutter, pop, tick, unlock,
+  battery) and plays them with `paplay`.
 * The `open_launchpad` of the Control Centre and of the dock toggles the
   Launchpad: a second click closes it again.
 * The dock's own `show_dock` sets a time (`_dock_until`) that nothing
