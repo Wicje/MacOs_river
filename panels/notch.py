@@ -526,7 +526,7 @@ class Notch(Panel):
             center = (cx + size / 2, cy + size / 2)
             if on:
                 # the halo of a running feature, one ring behind the chip
-                cr.set_source_rgba(*pal["accent"], 0.30)
+                cr.set_source_rgba(*pal["accent"][:3], 0.30)
                 cr.arc(center[0], center[1], size / 2 + 3 * scale,
                        0, 2 * math.pi)
                 cr.set_line_width(2.0 * scale)

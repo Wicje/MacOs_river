@@ -343,6 +343,29 @@ def clipboard(cr, x, y, size, color):
     cr.restore()
 
 
+def claude(cr, x, y, size, color):
+    """The Claude mark: a hand-drawn asterisk, eight rays around a core."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.7 * s)
+    cr.set_line_cap(1)  # round caps, the rays end soft
+    cx, cy = x + 8 * s, y + 8 * s
+    rays = (2.0, 3.0, 2.3, 3.15, 2.0, 3.0, 2.3, 3.15)
+    for i, ray in enumerate(rays):
+        a = i * math.pi / 4 + math.pi / 8
+        inner = 1.1 * s
+        outer = inner + ray * s
+        cr.move_to(cx + math.cos(a) * inner, cy + math.sin(a) * inner)
+        cr.line_to(cx + math.cos(a) * outer, cy + math.sin(a) * outer)
+    cr.stroke()
+    # the core, slightly hollow, like the printed mark
+    cr.set_line_width(1.1 * s)
+    cr.arc(cx, cy, 1.15 * s, 0, 2 * math.pi)
+    cr.stroke()
+    cr.restore()
+
+
 def camera(cr, x, y, size, color):
     """The SF Symbols camera: a soft body over a ringed lens."""
     s = _unit(cr, x, y, size)

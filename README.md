@@ -222,3 +222,30 @@ A layer-shell surface takes the pointer over its whole rectangle, even
 where it is transparent.  The dock therefore tells the compositor which
 part of its surface is real, so the windows underneath can be clicked
 through the space between the icons and the shelf.
+
+## The menu bar of the programs
+
+The status row of the top bar speaks macOS's NSStatusItem: any program
+of the machine can keep a badge up there, with a glyph, an icon of its
+own, a tint and a command a click runs.  The helper is `bin/mstatus`:
+
+```
+mstatus set claude --icon ~/.config/macshell/icons/claude.png \
+                   --title "Claude" --color orange --run "foot -e claude"
+mstatus set build  --glyph sparkles --text 42 --color green --run "make notify"
+mstatus ping claude          # renew a badge, keeping what it says
+mstatus del claude           # take a badge away
+mstatus list                 # what the bar shows right now
+```
+
+Every badge carries its own expiry (`--ttl`, an hour by default): a
+program that keeps running calls `ping` now and then, one that stops
+fades out of the bar on its own -- nothing to uninstall.  `--color`
+takes `text`, `accent`, `faint`, an accent name (`orange`, `red`, ...)
+or `#rrggbb`.  `--glyph` takes any name the shell draws
+(`sparkles`, `moon`, `claude`, ...); `--icon` takes a png of the
+program's own.  A click runs the `--run` command with
+`MACSHELL_STATUS_ITEM` naming the badge.
+
+Programs that speak the same protocol as waybar's tray speak to the same
+row through StatusNotifierItem instead -- both live together.

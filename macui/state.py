@@ -386,7 +386,62 @@ def phonehub_status():
     if not phonehub_running():
         return "Off"
     address = phonehub_address()
-    return f"Ready" if address else "No network"
+    return "Ready" if address else "No network"
+
+
+# -- status items (NSStatusItem, the menu bar extras) ------------------------
+
+def status_dir():
+    """Where the programs publish their menu bar items.
+
+    One small JSON file per item; written by the mstatus helper.  The
+    directory lives in the session folder, so it dies with the session
+    and never needs cleaning up.
+    """
+    return os.path.join(
+        os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"),
+        "macshell", "status")
+
+
+def status_items():
+    """The live menu bar items, the way the panels read them.
+
+    Every published file carries its own expiry (`ttl` seconds after
+    `updated`); a program that stops beating simply fades out of the
+    bar on its own, the macOS way.  The list is sorted by id so the
+    items never jump around when one renews itself.
+    """
+    out = []
+    now = time.time()
+    try:
+        names = sorted(os.listdir(status_dir()))
+    except OSError:
+        return out
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(status_dir(), name)
+        try:
+            with open(path) as fh:
+                item = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(item, dict):
+            continue
+        try:
+            ttl = float(item.get("ttl", 30))
+            updated = float(item.get("updated", 0))
+        except (TypeError, ValueError):
+            continue
+        if ttl <= 0 or now - updated > ttl:
+            # long expired: the bar would not paint it, so do not hand
+            # it over either; `mstatus del` cleans the file up
+            continue
+        item["id"] = name[:-5]
+        out.append(item)
+    return out
+
+
 
 
 def theme_name():

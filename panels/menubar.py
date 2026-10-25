@@ -10,15 +10,18 @@ from __future__ import annotations
 
 import math
 import os
+import subprocess
 import time
 
 import gi
 
 gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
 
-from gi.repository import GLib  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, GLib  # noqa: E402
 
-from ..macui import actions, draw, glyphs, menus, state  # noqa: E402
+from ..macui import actions, draw, glyphs, menus, metrics as _metrics, state  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 def battery_level():
@@ -195,6 +198,63 @@ class MenuBar(Panel):
                 self._tray_x.append((right - dw, dw, item))
                 right -= dw + m.px("status_gap") * 0.7
 
+        # the status items of the programs -- NSStatusItem, the macOS
+        # menu bar row handed over to the machine: any program can sit
+        # here with a glyph or its own icon, a tint, a small count and
+        # the command a click runs.  Published through the mstatus
+        # helper as tiny json files with their own expiry, so a program
+        # that stops beating fades out of the bar on its own.
+        self._status_hits = []
+        font2 = m.font("clock_font_size")
+        for st in state.status_items():
+            color = self._color_of(st, pal)
+            text = str(st.get("text") or "")
+            tw = draw.text_width(cr, text, font2) if text else 0.0
+            size = glyph
+            iw = size
+            pixbuf = None
+            icon = str(st.get("icon") or "")
+            if icon:
+                try:
+                    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(icon, size, -1)
+                except Exception:  # noqa: BLE001
+                    pixbuf = None
+            if pixbuf is not None:
+                w0, h0 = pixbuf.get_width(), pixbuf.get_height()
+                if w0 <= 0 or h0 <= 0:
+                    iw = 0.0
+                else:
+                    f = size / max(w0, h0)
+                    cr.save()
+                    cr.translate(right - w0 * f, (bar - h0 * f) / 2)
+                    cr.scale(f, f)
+                    Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0)
+                    cr.paint()
+                    cr.restore()
+                    iw = w0 * f
+            else:
+                name = str(st.get("glyph") or st["id"])
+                fn = getattr(glyphs, name, None)
+                if fn is not None:
+                    fn(cr, right - size, (bar - size) / 2, size, color)
+                else:
+                    # no glyph of that name: the first letter in a soft
+                    # disc, the way a thumbnail app would badge it
+                    r = size / 2
+                    cx0 = right - size
+                    cr.arc(cx0 + r, bar / 2, r - 1, 0, 2 * math.pi)
+                    cr.set_source_rgba(*pal["text_faint"])
+                    cr.fill()
+                    draw.draw_text(cr, cx0 + r, bar / 2 + 1,
+                                   name[:1].upper(), size * 0.75, color,
+                                   align="center", baseline="middle")
+            if text:
+                draw.draw_text(cr, right - iw - 3 * s, bar / 2, text, font2,
+                               color, align="right", baseline="middle")
+            w = iw + (tw + 3 * s if text else 0.0)
+            self._status_hits.append((right - w, w, st))
+            right -= w + m.px("status_gap")
+
     # -- input ---------------------------------------------------------------
 
     def on_motion(self, x, y):
@@ -213,6 +273,10 @@ class MenuBar(Panel):
                     self._open_tray_menu(item)
                 else:
                     self.shell.tray_item(item)
+                return True
+        for slot_x, slot_w, st in getattr(self, "_status_hits", []):
+            if slot_x <= x <= slot_x + slot_w:
+                self._run_status_item(st)
                 return True
         if hasattr(self, "_clock_x") and \
                 self._clock_x <= x <= self._clock_x + self._clock_w:
@@ -257,6 +321,34 @@ class MenuBar(Panel):
 
     def on_scroll(self, x, y, direction):
         return False
+
+    def _color_of(self, st, pal):
+        """The tint of a status item: a palette key, an accent name or #hex."""
+        c = str(st.get("color") or "text")
+        if c.startswith("#") and len(c) == 7:
+            try:
+                return (int(c[1:3], 16) / 255, int(c[3:5], 16) / 255,
+                        int(c[5:7], 16) / 255, 1.0)
+            except ValueError:
+                pass
+        named = _metrics.ACCENTS.get(c)
+        if named is not None:
+            return (*named, 1.0)
+        return pal.get(c, None) or pal["text"]
+
+    def _run_status_item(self, st):
+        """A click on a program's item: hand it over, the macOS way."""
+        run = str(st.get("run") or "").strip()
+        if not run:
+            return
+        env = dict(os.environ)
+        env["MACSHELL_STATUS_ITEM"] = st["id"]
+        try:
+            subprocess.Popen(run, shell=True, start_new_session=True,
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, env=env)
+        except Exception:  # noqa: BLE001
+            pass
 
     def open_menu_by_title(self, title):
         """Open one of the application menus by name."""
