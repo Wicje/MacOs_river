@@ -1,0 +1,19 @@
+# River UI - notifications styled as a Liquid-Glass overlay below the notch
+
+font=SF Pro Text 11
+include=/home/zk3/.config/mako/theme.conf
+border-size=1
+border-radius=18
+padding=12,16
+margin=16
+width=340
+height=150
+max-visible=3
+anchor=top-right
+default-timeout=6000
+group-by=app-name
+
+# Focus modes come and go only at runtime, by way of "makoctl mode -s".
+# The names here are the ones macshell's state.set_dnd_mode() uses.
+[mode=do-not-disturb]
+invisible=1

@@ -3,10 +3,11 @@
 The list of the open ends of the shell, in the order they should be
 picked up.  Every item says what was found out and what is missing.
 
-## 5. The phone hub — working, phone side unverified
+## 5. The phone hub — verified by the owner 2026-10-25
 
-**State:** the laptop side is wired and verified (2026-10-25);
-the page was never opened from a real phone yet.
+**State:** the laptop side was wired and unit-verified; the owner then
+opened it from a real phone and the tests passed, clipboard and files
+included.  Nothing is waiting here any more.
 
 * `tools/phonehub.py` serves the clipboard both ways, notifications for
   links and `~/Downloads/phone` for files; every route carries the
@@ -87,6 +88,37 @@ to try once, with the owner present, is the very first step (a real
 voice through `pw-record`) and the very last (`wtype` into a real
 window). The model loads per call; if the latency matters, keep the
 venv warm (function to revisit).
+
+The dictation tile was then used by the owner from the Control Centre
+itself, with the real microphone, on the evening of 2026-10-25: the
+recording and the typed sentence came out right, so the whole path is
+proven and nothing is waiting here either.
+
+## 6. The notification daemon (mako) — crash loop fixed 2026-10-25
+
+While testing the phone hub the notifications died: mako restarted over
+and over and systemd put it into the start limit.  What was wrong:
+
+* The config carried a `[mode]` section that declared mode names.  Mako
+  does *not* declare modes in its config — modes only exist at runtime
+  (`makoctl mode -s …` sets the list) and the config only matches on
+  them with criteria sections like `[mode=do-not-disturb]`.  A bare
+  `[mode]` header cannot parse, so mako refused the whole file.  The
+  section now matches the manual, and a notification under
+  `do-not-disturb` stays in the history of the notification centre
+  while it is invisible on the desktop — verified live.
+* `state.set_dnd_mode` used `makoctl mode -t` — a *toggle*.  Switching
+  from one focus mode to another left both turned on, and switching to
+  "off" added a mode literally called "off" that never left.  It uses
+  `makoctl mode -s` now (replaces the whole set; `-s` alone clears —
+  both verified).
+* `state.run` timed out after three seconds but killed only the shell
+  around the command, and on this machine `/bin/sh` is bash, which
+  leaves the inner command running: every `powerprofilesctl get` while
+  the daemon was still starting leaked an orphan that kept holding the
+  pipe.  `run` starts its own session now and kills the whole process
+  group when the read does not come back (a hanging sleep leaves
+  nothing behind — verified).
 
 ## 4. Smaller things
 

@@ -39,10 +39,27 @@ _cache_lock = threading.Lock()
 
 
 def run(cmd, timeout=3):
+    # shell=True means /bin/sh forks the real command (bash does not exec
+    # its last command), so a timeout that only killed the shell left the
+    # command alive as an orphan holding the pipe -- powerprofilesctl on
+    # boot hung this way for minutes.  The whole fresh session of shells is
+    # therefore killed together when the read does not come back.
+    p = subprocess.Popen(
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, start_new_session=True
+    )
     try:
-        return subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=timeout
-        ).stdout.strip()
+        return p.communicate(timeout=timeout)[0].strip()
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+        except Exception:
+            pass
+        try:
+            p.wait(timeout=1)
+        except Exception:
+            pass
+        return ""
     except Exception:
         return ""
 
@@ -207,8 +224,11 @@ def dnd_mode():
 def set_dnd_mode(mode):
     """Switch to a focus mode.
 
-    The hour the mode began is written down, so the focus timer of the
-    widget column knows how long the session has been.
+    -s replaces the whole mode set, so the chosen mode is the only one
+    on (a -t toggle would leave two modes on at once, and an "off" would
+    add a mode called off instead of clearing).  The hour the mode
+    began is written down, so the focus timer of the widget column knows
+    how long the session has been.
     """
     if mode and mode != "off":
         try:
@@ -221,7 +241,10 @@ def set_dnd_mode(mode):
             os.unlink(FOCUS_FILE)
         except OSError:
             pass
-    spawn(f"makoctl mode -t {mode}")
+    if mode and mode != "off":
+        spawn(f"makoctl mode -s {mode}")
+    else:
+        spawn("makoctl mode -s")
 
 
 def toggle_dnd():

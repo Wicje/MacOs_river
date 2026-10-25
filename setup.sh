@@ -194,6 +194,14 @@ if [ -f "$cfg/river/init" ] && ! cmp -s "$cfg/river/init" "$cfg/macshell/river/i
     echo "    your river configuration was kept as $cfg/river/init.macshell.bak"
 fi
 
+# the notification daemon: a Liquid-Glass overlay under the notch
+mkdir -p "$cfg/mako"
+for f in config theme.conf; do
+    if [ ! -f "$cfg/mako/$f" ]; then
+        cp "$cfg/macshell/mako/$f" "$cfg/mako/$f"
+    fi
+done
+
 # the dock of the shell: a few more applications to start with
 echo "==> checking the dock"
 if [ ! -f "$cfg/macshell/dock.json" ]; then

@@ -9,7 +9,9 @@ used to.
 from __future__ import annotations
 
 import ctypes
+import os
 import sys
+import time
 
 import gi
 
@@ -314,16 +316,32 @@ class Panel(Gtk.Window):
         x, y = self._local(event)
         self.pointer = (x, y)
         self.on_motion(x, y)
+        if os.environ.get("MACSHELL_EVENT_LOG"):
+            now = time.monotonic()
+            # motion floods the journal: every twentieth motion speaks
+            if not hasattr(self, "_motion_log_at") \
+                    or now - self._motion_log_at > 2.0:
+                self._motion_log_at = now
+                print(f"panel {self.NAMESPACE} motion x={x:.1f} y={y:.1f}",
+                      file=sys.stderr, flush=True)
         self.area.queue_draw()
         return False
 
     def _on_button(self, _w, event):
         x, y = self._local(event)
+        if os.environ.get("MACSHELL_EVENT_LOG"):
+            rects = self.input_rects()
+            print(f"panel {self.NAMESPACE} button type={event.type.name} "
+                  f"button={event.button} x={x:.1f} y={y:.1f} "
+                  f"offset={getattr(self, '_offset', 0):.1f} "
+                  f"rects={rects}", file=sys.stderr, flush=True)
         if event.type == Gdk.EventType.BUTTON_PRESS:
             self.on_click(x, y, event.button)
         return False
 
     def _on_enter(self, _w, _event):
+        if os.environ.get("MACSHELL_EVENT_LOG"):
+            print(f"panel {self.NAMESPACE} enter", file=sys.stderr, flush=True)
         self.area.queue_draw()
         return False
 
