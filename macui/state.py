@@ -127,6 +127,31 @@ def toggle_bluetooth():
     spawn("bluetoothctl power " + ("off" if bluetooth_on() else "on"))
 
 
+# --- night light -----------------------------------------------------------
+
+NIGHTLIGHT = os.path.expanduser("~/.config/river/nightlight.py")
+
+
+def nightlight_pidfile():
+    return f"/tmp/river-night-{os.getuid()}.pid"
+
+
+def nightlight_on():
+    """True while the warm tint of the night light is on the screen."""
+    try:
+        with open(nightlight_pidfile()) as fh:
+            pid = int(fh.read().strip())
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def toggle_nightlight():
+    """The script toggles itself: a second run kills the first one."""
+    spawn(f"python3 {NIGHTLIGHT}")
+
+
 # --- audio -----------------------------------------------------------------
 
 def volume():

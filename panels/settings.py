@@ -8,6 +8,7 @@ so the changes show up immediately.
 from __future__ import annotations
 
 import os
+import subprocess
 
 import gi
 
@@ -29,8 +30,10 @@ SECTIONS = [
     ("centre", "Control Centre", "control_center"),
     ("sound", "Sound", "speaker"),
     ("displays", "Displays", "display"),
-    ("notifications", "Notifications", "check"),
-    ("keyboard", "Keyboard", "chevron_down"),
+    ("wifi", "Wi-Fi", "wifi"),
+    ("battery", "Battery", "battery"),
+    ("notifications", "Notifications", "bell"),
+    ("keyboard", "Keyboard", "keyboard"),
     ("about", "About", "apple"),
 ]
 
@@ -184,8 +187,15 @@ class Settings(Panel):
             else:
                 color = pal["text"]
             size = 15 * scale
-            self._draw_glyph(cr, glyph, x + 18 * scale, iy + (item_h - size) / 2,
-                             size, color)
+            if glyph == "battery":
+                glyphs.battery(cr, x + 18 * scale,
+                               iy + (item_h - size * 0.68) / 2,
+                               size * 0.68, color,
+                               (self._battery_level() or 0) / 100.0,
+                               self._battery_charging())
+            else:
+                self._draw_glyph(cr, glyph, x + 18 * scale,
+                                 iy + (item_h - size) / 2, size, color)
             draw.draw_text(cr, x + 42 * scale, iy + item_h / 2 - 2 * scale, label,
                            m.font("menu_font_size"), color, baseline="middle",
                            max_width=sidebar - 56 * scale, ellipsize=True)
@@ -225,6 +235,10 @@ class Settings(Panel):
             self._paint_sound(cr, x, top, w, scale, pal)
         elif self.section == "displays":
             self._paint_displays(cr, x, top, w, scale, pal)
+        elif self.section == "wifi":
+            self._paint_wifi(cr, x, top, w, scale, pal)
+        elif self.section == "battery":
+            self._paint_battery(cr, x, top, w, scale, pal)
         elif self.section == "notifications":
             self._paint_notifications(cr, x, top, w, scale, pal)
         elif self.section == "keyboard":
@@ -400,43 +414,230 @@ class Settings(Panel):
 
     def _paint_sound(self, cr, x, y, w, scale, pal):
         m = self.metrics
-        volume = state.volume()
+        cfg = self._config()
         y += 8 * scale
-        self._slider(cr, x, y, w - 120 * scale, scale, pal, volume,
+
+        # output
+        draw.draw_text(cr, x, y, "Output", 11 * scale, pal["text_faint"],
+                       baseline="middle")
+        y += 24 * scale
+        draw.draw_text(cr, x, y, "Built-in Speakers — HD Audio",
+                       m.font("cc_font_size"), pal["text"],
+                       baseline="middle")
+        y += 32 * scale
+        self._slider(cr, x, y, w - 120 * scale, scale, pal, state.volume(),
                      lambda value: state.set_volume(value))
         y += 44 * scale
-        self._switch_row(cr, x, y, w, scale, pal, "Mute", "mute", False,
-                         action=lambda: state.toggle_mute())
+        self._switch_state_row(cr, x, y, w, scale, pal, "Mute",
+                               state.muted(), lambda: state.toggle_mute())
+        y += 44 * scale
+
+        # the sounds of the shell itself (startup, trash, screenshot…)
+        self._switch_row(cr, x, y, w, scale, pal, "Interface sounds",
+                         "sounds", True)
+        y += 36 * scale
+        if cfg.get("sounds", True):
+            sv = int(float(cfg.get("sound_volume", 0.7)) * 100)
+            draw.draw_text(cr, x, y, "Sounds volume", m.font("cc_font_size"),
+                           pal["text"], baseline="middle")
+            self._slider(cr, x + 110 * scale, y, w - 230 * scale, scale, pal,
+                         sv, lambda value: self._set("sound_volume",
+                                                     round(value / 100.0, 2)))
+        y += 50 * scale
+
+        # input
+        draw.draw_text(cr, x, y, "Input", 11 * scale, pal["text_faint"],
+                       baseline="middle")
+        y += 24 * scale
+        draw.draw_text(cr, x, y, "Built-in Microphone",
+                       m.font("cc_font_size"), pal["text"], baseline="middle")
+        y += 36 * scale
+        talks = state.dictation_active()
+        self._switch_state_row(cr, x, y, w, scale, pal, "Dictation",
+                               talks, lambda: state.toggle_dictation())
 
     def _paint_displays(self, cr, x, y, w, scale, pal):
         m = self.metrics
-        brightness = state.brightness()
         y += 8 * scale
-        self._slider(cr, x, y, w - 120 * scale, scale, pal, brightness,
+        draw.draw_text(cr, x, y, "Brightness", m.font("cc_font_size"),
+                       pal["text"], baseline="middle")
+        self._slider(cr, x + 110 * scale, y, w - 230 * scale, scale, pal,
+                     state.brightness(),
                      lambda value: state.set_brightness(value))
-        y += 50 * scale
+        y += 44 * scale
+        self._switch_state_row(cr, x, y, w, scale, pal, "Night Light",
+                               state.nightlight_on(),
+                               lambda: state.toggle_nightlight())
+        y += 44 * scale
         info = actions.system_info()
         draw.draw_text(cr, x, y, f"Resolution {info['display']}",
-                       m.font("cc_font_size"), pal["text_dim"], baseline="middle")
+                       m.font("cc_font_size"), pal["text_dim"],
+                       baseline="middle")
+
+    def _paint_wifi(self, cr, x, y, w, scale, pal):
+        m = self.metrics
+        y += 8 * scale
+        on = state.wifi_enabled()
+        self._switch_state_row(cr, x, y, w, scale, pal, "Wi-Fi", on,
+                               lambda: state.toggle_wifi())
+        y += 48 * scale
+        if not on:
+            draw.draw_text(cr, x, y, "Wi-Fi is off.", m.font("cc_font_size"),
+                           pal["text_faint"], baseline="middle")
+            return
+        ssid = state.wifi_ssid()
+        strength = state.wifi_strength()
+        draw.draw_text(cr, x, y, "Connected" if ssid else "No network",
+                       11 * scale, pal["text_faint"], baseline="middle")
+        y += 30 * scale
+        glyphs.wifi(cr, x, y - 9 * scale, 15 * scale, pal["text"],
+                    level=3 if strength >= 66 else 2 if strength >= 33 else 1)
+        draw.draw_text(cr, x + 24 * scale, y, ssid or "—",
+                       m.font("cc_font_size"), pal["text"], baseline="middle",
+                       max_width=w - 130 * scale, ellipsize=True)
+        draw.draw_text(cr, x + w, y, f"{strength}%",
+                       m.font("cc_font_size"), pal["text_dim"],
+                       align="right", baseline="middle")
+
+    def _paint_battery(self, cr, x, y, w, scale, pal):
+        m = self.metrics
+        level = self._battery_level()
+        y += 8 * scale
+        if level is None:
+            draw.draw_text(cr, x, y, "No battery found.",
+                           m.font("cc_font_size"), pal["text_faint"],
+                           baseline="middle")
+        else:
+            charging = self._battery_charging()
+            glyphs.battery(cr, x, y - 12 * scale, 24 * scale, pal["text"],
+                           level / 100.0, charging)
+            draw.draw_text(cr, x + 34 * scale, y,
+                           f"{level}% — "
+                           + ("Charging" if charging else "On battery"),
+                           m.font("cc_font_size"), pal["text"],
+                           baseline="middle")
+        y += 44 * scale
+        draw.draw_text(cr, x, y, "Frontmost today", 11 * scale,
+                       pal["text_faint"], baseline="middle")
+        y += 28 * scale
+        rows = state.screen_time()
+        if not rows:
+            draw.draw_text(cr, x, y, "Nothing counted yet today.",
+                           m.font("cc_font_size"), pal["text_faint"],
+                           baseline="middle")
+            return
+        top = max((minutes for _name, minutes in rows), default=1) or 1
+        for name, minutes in rows:
+            width = max(4 * scale, (w - 170 * scale) * minutes / top)
+            draw.fill_squircle(cr, x, y - 7 * scale, width, 14 * scale,
+                               4 * scale, pal["fill_hover"], 2.0)
+            if width > 46 * scale:
+                draw.draw_text(cr, x + 8 * scale, y,
+                               state.friendly_name(name),
+                               m.font("cc_font_size") * 0.9, pal["text"],
+                               baseline="middle", max_width=width - 16 * scale,
+                               ellipsize=True)
+            label = (f"{minutes // 60} h {minutes % 60} m"
+                     if minutes >= 60 else f"{minutes} m")
+            draw.draw_text(cr, x + w, y, label, m.font("cc_font_size"),
+                           pal["text_dim"], align="right", baseline="middle")
+            y += 26 * scale
 
     def _paint_notifications(self, cr, x, y, w, scale, pal):
         m = self.metrics
-        self._switch_row(cr, x, y + 10 * scale, w, scale, pal,
-                         "Do Not Disturb", "dnd", False,
-                         action=lambda: state.toggle_dnd())
-        draw.draw_text(cr, x, y + 60 * scale,
-                       "Notifications are shown by mako and collected in the "
-                       "notification centre.", m.font("cc_font_size"),
-                       pal["text_faint"], baseline="middle")
+        y += 8 * scale
+        self._switch_state_row(cr, x, y, w, scale, pal, "Do Not Disturb",
+                               state.dnd_on(), lambda: state.toggle_dnd())
+        y += 44 * scale
+        recent = self._recent_notifications()
+        draw.draw_text(cr, x, y, "Latest", 11 * scale, pal["text_faint"],
+                       baseline="middle")
+        y += 26 * scale
+        if not recent:
+            draw.draw_text(cr, x, y, "No notifications recorded.",
+                           m.font("cc_font_size"), pal["text_faint"],
+                           baseline="middle")
+            return
+        for summary, body in recent:
+            dot = 5 * scale
+            draw.fill_squircle(cr, x, y - dot / 2, dot, dot, dot / 2,
+                               pal["accent"], 2.0)
+            line = f"{summary} — {body}" if body else summary
+            draw.draw_text(cr, x + 14 * scale, y, line,
+                           m.font("cc_font_size") * 0.95, pal["text_dim"],
+                           baseline="middle", max_width=w - 20 * scale,
+                           ellipsize=True)
+            y += 24 * scale
+
+    def _recent_notifications(self):
+        """The last notifications mako kept, fresh on every open."""
+        try:
+            out = subprocess.run(
+                ["makoctl", "history"], capture_output=True, text=True,
+                timeout=3).stdout.strip()
+        except Exception:  # noqa: BLE001
+            return []
+        if not out:
+            return []
+        items = []
+        for chunk in out.split("\x1e"):
+            lines = [line for line in chunk.splitlines() if line.strip()]
+            if not lines:
+                continue
+            summary = lines[0].strip()
+            body = " ".join(line.strip() for line in lines[1:]).strip()
+            if summary or body:
+                items.append((summary, body))
+        return items[:5]
 
     def _paint_keyboard(self, cr, x, y, w, scale, pal):
         m = self.metrics
-        for index, (keys, label) in enumerate(SHORTCUTS):
-            ky = y + index * 26 * scale
-            draw.draw_text(cr, x, ky, keys, m.font("cc_font_size"), pal["text_dim"],
+        cfg = self._config()
+        y += 8 * scale
+
+        # the machine's real repeat behaviour, fed straight to river
+        draw.draw_text(cr, x, y, "Key repeat", 11 * scale, pal["text_faint"],
+                       baseline="middle")
+        y += 26 * scale
+        delay = int(cfg.get("key_repeat_delay", 600))
+        draw.draw_text(cr, x, y, "Delay until repeat", m.font("cc_font_size"),
+                       pal["text"], baseline="middle")
+        self._slider(cr, x + 140 * scale, y, w - 260 * scale, scale, pal,
+                     int((1.0 - (delay - 200) / 1000.0) * 100),
+                     lambda value: self._apply_repeat(
+                         200 + int((1.0 - value / 100.0) * 1000), delay))
+        draw.draw_text(cr, x + w, y, f"{delay} ms",
+                       m.font("cc_font_size") * 0.9, pal["text_dim"],
+                       align="right", baseline="middle")
+        y += 36 * scale
+        rate = int(cfg.get("key_repeat_rate", 25))
+        draw.draw_text(cr, x, y, "Repeat rate", m.font("cc_font_size"),
+                       pal["text"], baseline="middle")
+        self._slider(cr, x + 140 * scale, y, w - 260 * scale, scale, pal,
+                     int((rate - 5) / 55.0 * 100),
+                     lambda value: self._apply_repeat(
+                         delay, 5 + int(value / 100.0 * 55)))
+        draw.draw_text(cr, x + w, y, f"{rate} cps",
+                       m.font("cc_font_size") * 0.9, pal["text_dim"],
+                       align="right", baseline="middle")
+        y += 48 * scale
+
+        draw.draw_text(cr, x, y, "Shortcuts", 11 * scale, pal["text_faint"],
+                       baseline="middle")
+        y += 26 * scale
+        for keys, label in SHORTCUTS:
+            draw.draw_text(cr, x, y, keys, m.font("cc_font_size") * 0.9,
+                           pal["text_dim"], baseline="middle")
+            draw.draw_text(cr, x + 190 * scale, y, label,
+                           m.font("cc_font_size") * 0.9, pal["text"],
                            baseline="middle")
-            draw.draw_text(cr, x + 200 * scale, ky, label, m.font("cc_font_size"),
-                           pal["text"], baseline="middle")
+            y += 23 * scale
+
+    def _apply_repeat(self, delay, rate):
+        """Write the repeat behaviour down and tell river to use it."""
+        self._set("key_repeat_delay", max(200, min(1200, int(delay))))
+        self._set("key_repeat_rate", max(5, min(60, int(rate))))
+        state.spawn(f"riverctl set-repeat {int(rate)} {int(delay)}")
 
     def _paint_about(self, cr, x, y, w, scale, pal):
         m = self.metrics
@@ -460,6 +661,30 @@ class Settings(Panel):
                            max_width=w - 120 * scale, ellipsize=True)
 
     # -- widgets -------------------------------------------------------------
+
+    def _battery_level(self):
+        return state.battery_level()
+
+    def _battery_charging(self):
+        return state.battery_charging()
+
+    def _switch_state_row(self, cr, x, y, w, scale, pal, label, on, flip):
+        """A switch whose state comes from the machine, not the config."""
+        m = self.metrics
+        draw.draw_text(cr, x, y, label, m.font("cc_font_size"), pal["text"],
+                       baseline="middle")
+        switch_w = 38 * scale
+        switch_h = 22 * scale
+        sx = x + w - switch_w
+        sy = y - switch_h / 2
+        draw.fill_squircle(cr, sx, sy, switch_w, switch_h, switch_h / 2,
+                           pal["accent"] if on else pal.get(
+                               "switch_off", pal["fill_hover"]), 2.0)
+        knob = switch_h - 4 * scale
+        kx = sx + switch_w - knob - 2 * scale if on else sx + 2 * scale
+        draw.fill_squircle(cr, kx, sy + 2 * scale, knob, knob, knob / 2,
+                           pal["on_accent"], 2.0)
+        self._rows.append((sx, sy, switch_w, switch_h, lambda _x=None: flip()))
 
     def _switch_row(self, cr, x, y, w, scale, pal, label, key, default=True,
                     action=None):

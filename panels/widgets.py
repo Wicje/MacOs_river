@@ -125,7 +125,7 @@ class Widgets(Panel):
 
     def content_height(self):
         m = self.metrics
-        return int(m.px("widget_size") * 3 + m.px("widget_gap") * 5
+        return int(m.px("widget_size") * 4 + m.px("widget_gap") * 5
                    + m.px("widget_screen_h") + m.px("widget_dev_h"))
 
     # -- painting ------------------------------------------------------------
@@ -137,14 +137,19 @@ class Widgets(Panel):
         gap = m.px("widget_gap")
         radius = m.px("widget_radius")
 
-        # top row: the analog clock (left) and the weather (right), the way
-        # macOS stacks the clocks and the weather side by side
+        # the clock of the machine, a whole row: the dial on the left, the
+        # hours on the right
         self._tile(cr, 0, 0, width, size, radius, pal)
-        self._paint_analog_clock(cr, 0, 0, size, size, pal)
-        self._paint_weather(cr, size + gap, 0, width - size - gap, size, pal)
+        self._paint_clock_tile(cr, 0, 0, width, size, pal)
+
+        # the weather of the machine gets a whole row as well, so the
+        # place and the four forecast days fit without being cut
+        weather_y = size + gap
+        self._tile(cr, 0, weather_y, width, size, radius, pal)
+        self._paint_weather(cr, 0, weather_y, width, size, pal)
 
         # the month of the machine, laid out over the whole width
-        cal_y = size + gap
+        cal_y = weather_y + size + gap
         self._tile(cr, 0, cal_y, width, size, radius, pal)
         self._paint_calendar(cr, 0, cal_y, width, size, pal)
 
@@ -190,46 +195,61 @@ class Widgets(Panel):
             forecast = []
 
         pad = 10 * m.scale
-        big = h * 0.28
+        big = h * 0.30
         temp_w = 0.0
         # the big temperature on the right, the way the weather widget
         # of macOS leans its number against the edge
         if temperature:
             temp_w = draw.text_width(cr, f"{temperature}°", big, "bold")
-            draw.draw_text(cr, x + w - pad, y + h * 0.30, f"{temperature}°",
+            draw.draw_text(cr, x + w - pad, y + h * 0.28, f"{temperature}°",
                            big, pal["text"], weight="bold", align="right",
                            baseline="middle")
         if low and high:
-            draw.draw_text(cr, x + w - pad, y + h * 0.52, f"{high}/{low}",
-                           9 * m.scale, pal["text_faint"], align="right",
+            draw.draw_text(cr, x + w - pad, y + h * 0.56, f"{high}/{low}",
+                           9.5 * m.scale, pal["text_faint"], align="right",
                            baseline="middle")
         # ... the place and the condition on the left, kept clear of the
         # temperature
         text_w = max(0.0, w - temp_w - pad * 3)
-        draw.draw_text(cr, x + pad, y + h * 0.15, place, 8 * m.scale,
+        draw.draw_text(cr, x + pad, y + h * 0.16, place, 9 * m.scale,
                        pal["text_faint"], baseline="middle",
                        max_width=text_w, ellipsize=True)
-        draw.draw_text(cr, x + pad, y + h * 0.36, condition, 9 * m.scale,
+        draw.draw_text(cr, x + pad, y + h * 0.40, condition, 10 * m.scale,
                        pal["text"], weight="bold", baseline="middle",
                        max_width=text_w, ellipsize=True)
         # the forecast strip along the bottom: the day, then high and low
         if forecast:
-            strip_y = y + h * 0.80
+            strip_y = y + h * 0.82
             days = forecast[:4]
             cell = w / len(days)
             for index, day in enumerate(days):
-                cx = x + pad + cell * index
-                draw.draw_text(cr, cx, strip_y, day.get("dow", ""),
-                               8 * m.scale, pal["text_faint"],
-                               baseline="middle")
+                draw.draw_text(cr, x + pad + cell * index, strip_y,
+                               day.get("dow", ""), 8.5 * m.scale,
+                               pal["text_faint"], baseline="middle",
+                               max_width=cell - pad * 2.5, ellipsize=True)
+                # the temperatures sit at the right edge of their cell,
+                # and the last cell leans on the tile's edge, not beyond it
+                edge = min(cell * (index + 1), w) - pad
                 draw.draw_text(
-                    cr, x + pad + cell * (index + 1), strip_y,
+                    cr, x + edge, strip_y,
                     f"{day.get('max', '')}/{day.get('min', '')}",
-                    9 * m.scale, pal["text_dim"], align="right",
+                    9.5 * m.scale, pal["text_dim"], align="right",
                     baseline="middle",
                     max_width=cell - pad * 2, ellipsize=True)
 
-    def _paint_analog_clock(self, cr, x, y, w, h, pal):
+    def _paint_clock_tile(self, cr, x, y, w, h, pal):
+        """A whole row for the time: the dial on the left, the hours right."""
+        m = self.metrics
+        self._paint_analog_clock(cr, x, y, h, h, pal, date_label=False)
+        now = datetime.datetime.now()
+        tx = x + h + 14 * m.scale
+        draw.draw_text(cr, tx, y + h * 0.36, now.strftime("%H:%M"),
+                       m.font("notch_font_size") * 1.9, pal["text"],
+                       weight="bold", baseline="middle")
+        draw.draw_text(cr, tx, y + h * 0.72, now.strftime("%A, %-d %B"),
+                       10 * m.scale, pal["text_dim"], baseline="middle")
+
+    def _paint_analog_clock(self, cr, x, y, w, h, pal, date_label=True):
         """The face of a watch, with the second hand of the moment."""
         m = self.metrics
         cx, cy = x + w / 2, y + h * 0.44
@@ -270,9 +290,10 @@ class Widgets(Panel):
         draw.fill_squircle(cr, cx - r_, cy - r_, r_ * 2, r_ * 2, r_,
                            pal["accent"], 2.0)
         # the date of today under the face, the way the widget ends
-        draw.draw_text(cr, cx, y + h * 0.92, now.strftime("%a %-d %b"),
-                       h * 0.075, pal["text_faint"],
-                       align="center", baseline="middle")
+        if date_label:
+            draw.draw_text(cr, cx, y + h * 0.92, now.strftime("%a %-d %b"),
+                           h * 0.075, pal["text_faint"],
+                           align="center", baseline="middle")
         cr.restore()
 
     def _paint_screen_time(self, cr, x, y, w, h, pal):

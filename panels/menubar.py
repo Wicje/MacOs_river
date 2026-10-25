@@ -135,6 +135,17 @@ class MenuBar(Panel):
             self._battery_w = bw
             right -= bw + m.px("status_gap")
 
+        # the microphone, the way macOS tucks a privacy indicator into the
+        # status cluster: far while nobody listens, the warm orange of the
+        # notch light while a program records.  A click toggles the
+        # dictation.
+        live = state.mic_active()
+        mic_color = ((1.0, 0.58, 0.0, 1.0) if live else (*pal["text_faint"],))
+        glyphs.microphone(cr, right - glyph, (bar - glyph) / 2, glyph,
+                          mic_color)
+        self._mic_x = right - glyph
+        right -= glyph + m.px("status_gap")
+
         # the power profile, the way the Control Centre lists it
         self._power = state.power_mode()
         glyphs.energy(cr, right - glyph - 2 * s, (bar - glyph) / 2, glyph,
@@ -210,6 +221,12 @@ class MenuBar(Panel):
         if hasattr(self, "_battery_x") and \
                 self._battery_x <= x <= self._battery_x + self._battery_w:
             self.shell.open_popup("battery", x)
+            return True
+        if hasattr(self, "_mic_x") and \
+                self._mic_x <= x <= self._mic_x + m.px("status_glyph"):
+            if button == 1:
+                state.toggle_dictation()
+                self.redraw()
             return True
         if hasattr(self, "_profile_x") and \
                 self._profile_x <= x <= self._profile_x + m.px("status_glyph"):

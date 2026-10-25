@@ -476,25 +476,79 @@ def wand(cr, x, y, size, color):
 
 
 def microphone(cr, x, y, size, color):
-    """The microphone of the dictation."""
+    """The microphone of the dictation, drawn like the SF Symbols mic."""
     s = _unit(cr, x, y, size)
     cr.save()
     cr.set_source_rgba(*color)
-    cr.set_line_width(1.5 * s)
+    # the solid capsule of SF Symbols' mic.fill
+    cr.move_to(x + 5.6 * s, y + 4.6 * s)
+    cr.arc(x + 8 * s, y + 4.6 * s, 2.4 * s, math.pi, 0)
+    cr.line_to(x + 10.4 * s, y + 7.2 * s)
+    cr.arc(x + 8 * s, y + 7.2 * s, 2.4 * s, 0, math.pi)
+    cr.close_path()
+    cr.fill()
+    # the U bracket around it, the stand and the base
+    cr.set_line_width(1.4 * s)
     cr.set_line_cap(cairo.LINE_CAP_ROUND)
-    # the capsule
-    cr.arc(x + 8 * s, y + 5.4 * s, 2.6 * s, math.pi, 2 * math.pi)
+    cr.move_to(x + 4.4 * s, y + 7.4 * s)
+    cr.arc(x + 8 * s, y + 7.4 * s, 3.6 * s, 0, math.pi)
     cr.stroke()
-    cr.move_to(x + 5.4 * s, y + 5.6 * s)
-    cr.line_to(x + 5.4 * s, y + 8.0 * s)
-    cr.arc_negative(x + 8 * s, y + 8.0 * s, 2.6 * s, math.pi, 0)
+    cr.move_to(x + 8 * s, y + 11.0 * s)
+    cr.line_to(x + 8 * s, y + 13.0 * s)
     cr.stroke()
-    # the stand
-    cr.move_to(x + 8 * s, y + 10.6 * s)
-    cr.line_to(x + 8 * s, y + 13.4 * s)
-    cr.move_to(x + 5.6 * s, y + 13.4 * s)
-    cr.line_to(x + 10.4 * s, y + 13.4 * s)
+    cr.move_to(x + 5.8 * s, y + 13.0 * s)
+    cr.line_to(x + 10.2 * s, y + 13.0 * s)
     cr.stroke()
+    cr.restore()
+
+
+def bell(cr, x, y, size, color):
+    """A notification bell, for the settings sidebar."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.4 * s)
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    # the body: a dome from the left shoulder over the top to the right,
+    # straight down to the skirt
+    cr.move_to(x + 4.4 * s, y + 11.2 * s)
+    cr.arc(x + 8 * s, y + 8.2 * s, 3.6 * s, math.pi, 2 * math.pi)
+    cr.line_to(x + 11.6 * s, y + 11.2 * s)
+    cr.stroke()
+    # the skirt bar
+    cr.move_to(x + 3.2 * s, y + 11.2 * s)
+    cr.line_to(x + 12.8 * s, y + 11.2 * s)
+    cr.stroke()
+    # the clapper
+    cr.arc(x + 8 * s, y + 13.2 * s, 1.0 * s, 0, math.pi)
+    cr.stroke()
+    cr.restore()
+
+
+def keyboard(cr, x, y, size, color):
+    """A keyboard, for the settings sidebar."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.3 * s)
+    r = 1.6 * s
+    x0, x1 = x + 1.4 * s, x + 14.6 * s
+    y0, y1 = y + 3.8 * s, y + 12.2 * s
+    cr.move_to(x0 + r, y0)
+    cr.line_to(x1 - r, y0)
+    cr.arc(x1 - r, y0 + r, r, -math.pi / 2, 0)
+    cr.line_to(x1, y1 - r)
+    cr.arc(x1 - r, y1 - r, r, 0, math.pi / 2)
+    cr.line_to(x0 + r, y1)
+    cr.arc(x0 + r, y1 - r, r, math.pi / 2, math.pi)
+    cr.line_to(x0, y0 + r)
+    cr.arc(x0 + r, y0 + r, r, math.pi, 3 * math.pi / 2)
+    cr.stroke()
+    for row, cy in ((0, y + 6.4 * s), (1, y + 9.0 * s)):
+        for col in range(4):
+            cr.arc(x + (3.4 + col * 2.4 + row * 1.2) * s, cy, 0.65 * s,
+                   0, 2 * math.pi)
+            cr.fill()
     cr.restore()
 
 
