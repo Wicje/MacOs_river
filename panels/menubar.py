@@ -22,6 +22,7 @@ gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gdk, GdkPixbuf, GLib  # noqa: E402
 
 from ..macui import actions, draw, glyphs, menus, metrics as _metrics, state  # noqa: E402
+from ..macui import traffic  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 def battery_level():
@@ -74,6 +75,7 @@ class MenuBar(Panel):
         # the badges read once a second; the pulse loop only exists while
         # one of them wants to breathe
         self._status_items_cache = state.status_items()
+        self._net_speeds = traffic.speeds()
         pulsing = any(st.get("pulse") for st in self._status_items_cache)
         if pulsing and not self._pulse_id:
             self._pulse_id = GLib.timeout_add(66, self._pulse_tick)
@@ -171,6 +173,17 @@ class MenuBar(Panel):
         glyphs.wifi(cr, right - glyph, (bar - glyph) / 2, glyph, wifi_color,
                     level=3)
         self._wifi_x = right - glyph
+        hover = (self.pointer[0] >= 0
+                 and self._wifi_x <= self.pointer[0] <= self._wifi_x + glyph)
+        if hover:
+            # the speeds of the moment, revealed on hover beside the
+            # icon itself instead of wearing a second badge
+            rx, tx = getattr(self, "_net_speeds", (0.0, 0.0))
+            label = f"↓ {traffic.human(rx)}/s   ↑ {traffic.human(tx)}/s"
+            tw = draw.text_width(cr, label, font2)
+            draw.draw_text(cr, right - glyph - 10 * s, bar / 2, label, font2,
+                           pal["text_dim"], align="right", baseline="middle")
+            right -= tw + 18 * s
         right -= glyph + m.px("status_gap")
 
         glyphs.control_center(cr, right - glyph, (bar - glyph) / 2, glyph, pal["text"])

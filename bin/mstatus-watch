@@ -62,19 +62,13 @@ def main():
     while True:
         best = _find_process()
         running = best is not None
-        if best is not None:
-            secs, _cmd = best
-            mins = max(1, secs // 60)
-            text = f"{mins}m" if mins < 60 else f"{mins // 60}h{mins % 60:02d}"
-        else:
-            text = ""
         # every pass is the heartbeat of the badge, so its expiry stays
         # fresh whether the badge is lit or resting
         args = [sys.executable, mstatus, "set", *badges,
                 "--icon", icon,
                 "--title", "Claude is thinking" if running else "Claude",
                 "--color", "orange" if running else "text_faint",
-                "--text", text,
+                "--text", "",
                 "--pulse" if running else "--no-pulse"]
         subprocess.run(args, timeout=5,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

@@ -258,9 +258,16 @@ With a `--menu` the click becomes a pull-down, exactly as
 mstatus set claude --icon ... --menu "Open=>foot -e claude;;Status=>claude --status;;---;;Take it down=>mstatus del claude"
 ```
 
-`bin/mstatus-watch claude` is the worked example: it keeps the claude
-badge lit orange and breathing with an elapsed minutes counter while a
-claude/opencode session runs, and faint when nothing does.
+`bin/mstatus-watch claude` is the worked example: while a claude or
+opencode session runs it lights the badge orange and breathing, and
+lets it rest faint when nothing does -- no text, the tile says it all.
+
+The wifi icon needs no badge of its own: the speeds of the moment show
+beside it on hover, and its menu opens with what the month has used.
+The meter underneath is `bin/mstatus-net`, which keeps
+~/.local/share/macshell/traffic filled, one small file a day; the
+`bin/traffic` command prints the report -- `traffic today`, `week`,
+`month` or `days`.
 
 Programs that speak the same protocol as waybar's tray speak to the same
 row through StatusNotifierItem instead -- both live together.

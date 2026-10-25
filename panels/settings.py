@@ -498,6 +498,25 @@ class Settings(Panel):
         draw.draw_text(cr, x + w, y, f"{strength}%",
                        m.font("cc_font_size"), pal["text_dim"],
                        align="right", baseline="middle")
+        # the meter: what the full spot of the day, the week and the
+        # month have moved, the way the data pane says it
+        from ..macui import traffic
+        y += 64 * scale
+        draw.draw_text(cr, x, y, "Data usage", 11 * scale,
+                       pal["text_faint"], baseline="middle")
+        y += 30 * scale
+        for label, getter in (("Today", traffic.day_total),
+                              ("Last 7 days", traffic.week_total),
+                              ("This month", traffic.month_total)):
+            rx, tx = getter()
+            draw.draw_text(cr, x + 4 * scale, y, label,
+                           m.font("cc_font_size"), pal["text"],
+                           baseline="middle")
+            draw.draw_text(cr, x + w, y,
+                           f"↓ {traffic.human(rx)}   ↑ {traffic.human(tx)}",
+                           m.font("cc_font_size"), pal["text_dim"],
+                           align="right", baseline="middle")
+            y += 30 * scale
 
     def _paint_battery(self, cr, x, y, w, scale, pal):
         m = self.metrics

@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""traffic -- the meter's report: how much data the Wi-Fi moved.
+
+    traffic today | week | month [--pretty]
+
+Which totals come straight from the daily files
+~/.local/share/macshell/traffic that mstatus-net's meter keeps filled
+while the machine runs.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from macui import traffic  # noqa: E402
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="traffic", description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("span", nargs="?", default="today",
+                        choices=["today", "week", "month", "days"],
+                        help="which slice of the meter to print")
+    parser.add_argument("--days", type=int, default=14,
+                        help="how many days for the 'days' listing")
+    args = parser.parse_args()
+
+    if args.span == "today":
+        rx, tx = traffic.day_total()
+        label = "Today"
+    elif args.span == "week":
+        rx, tx = traffic.week_total()
+        label = "Last 7 days"
+    else:
+        rx, tx = traffic.month_total()
+        label = "This month"
+
+    print(f"{label}:  ↓ {traffic.human(rx)}   ↑ {traffic.human(tx)}   "
+          f"(↓+↑ {traffic.human(rx + tx)})")
+
+    if args.span == "days":
+        rows = traffic.per_day(args.days)
+        if rows:
+            print()
+            for name, drx, dtx in rows:
+                print(f"  {name[4:6]}/{name[6:]}  "
+                      f"↓ {traffic.human(drx):>12}   "
+                      f"↑ {traffic.human(dtx):>12}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

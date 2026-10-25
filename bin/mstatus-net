@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""mstatus-net -- the data meter of the machine.
+
+Not a badge: the wifi icon of the menu bar belongs to the shell, and
+its speeds show on hover.  This program is the meter underneath: every
+couple of seconds it adds what passed since the previous read to the
+daily file under ~/.local/share/macshell/traffic -- which is where the
+hover readout, the wifi menu and the Settings -> Wi-Fi pane take their
+today/week/month numbers from.
+
+    mstatus-net &
+
+Keep it running for the whole session; nothing shows until something
+moves.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import time
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from macui import traffic  # noqa: E402
+
+POLL = 2.0
+
+
+def main():
+    while True:
+        traffic.speeds()   # primes the rate cache; the hover reads it
+        traffic.record()   # the daily file grows by what passed
+        time.sleep(POLL)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

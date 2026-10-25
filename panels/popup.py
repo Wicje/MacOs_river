@@ -95,6 +95,25 @@ class StatusPopup(Panel):
 
     def _wifi(self):
         rows = []
+        # what the meter says, before the networks of the air
+        try:
+            from ..macui import traffic
+            m_rx, m_tx = traffic.month_total()
+            d_rx, d_tx = traffic.day_total()
+            rows.append({
+                "glyph": "grid",
+                "label": f"This month  ↓ {traffic.human(m_rx)}   "
+                         f"↑ {traffic.human(m_tx)}",
+                "detail": "", "active": False, "action": None,
+            })
+            rows.append({
+                "glyph": "grid",
+                "label": f"Today  ↓ {traffic.human(d_rx)}   "
+                         f"↑ {traffic.human(d_tx)}",
+                "detail": "", "active": False, "action": None,
+            })
+        except Exception:  # noqa: BLE001 — the meter may not be running
+            pass
         out = _run("nmcli -t -f ACTIVE,SSID,SIGNAL device wifi")
         for line in out.splitlines():
             parts = line.split(":")
