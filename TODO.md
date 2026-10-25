@@ -73,30 +73,35 @@ The dock says so now (the line that names the problem is the one that
 is shown), and the dock carries **Kitty** instead.  Kitty runs on this
 machine.
 
-## 3. The speech of the machine — SOLVED 2026-10-24
+## 3. The speech of the machine — SOLVED 2026-10-24/25
 
 The Control Centre has a **dictation** tile (mic glyph): first click
 starts `pw-record` (16 kHz mono → /tmp/dictation.wav, pid in
 /tmp/dictation.pid), the second click SIGINTs it (verified: SIGINT
 flushes a valid WAV, SIGKILL does not), notifies "Transcribing…", runs
 faster-whisper (`~/venvs/voice`, model `base`, ~8 s) and `wtype -`s the
-transcript into the focused window. NOT yet tried with a real
-recording, because the session was already in use. The model loads per
-call; if the latency matters, keep the venv warm (function to revisit).
+transcript into the focused window. The middle of the pipeline was
+verified with a synthetic recording on 2026-10-25: an `espeak-ng` wav
+came back as the right text through `~/bin/_voice.py stt`. What is left
+to try once, with the owner present, is the very first step (a real
+voice through `pw-record`) and the very last (`wtype` into a real
+window). The model loads per call; if the latency matters, keep the
+venv warm (function to revisit).
 
 ## 4. Smaller things
 
 * The tiles of the Control Centre and the buttons of the notch are
   written down in `config.json`; the file is in the repository, so the
   choices of the user come along with every commit.
-* The `MissionControl` and the `Settings` panel put a `GtkEntry` into a
-  window that already has a `GtkDrawingArea`; GTK complains about it
-  when the shell starts.
-* `GLib.unix_fd_add_full` is deprecated; the new `GLibUnix.fd_add_full`
-  wants to be used.
-* The `snap zone` of the edges of the screen is gone (the edges belong
-  to the applications now), but the README still offers it.  The
-  keyboard tiling draws the same rectangle, and that part works.
+* The phone hub is its own feature now — see the section above.
+* The `MissionControl` and the `Settings` warning is gone (2026-10-25):
+  the entries now live in a `Gtk.Overlay` over the drawing area, the
+  way the Launchpad always did it.
+* `GLibUnix.fd_add_full` is used now (2026-10-25); the deprecated
+  `GLib.unix_fd_add_full` is gone.
+* The README no longer offers the pointer snap zone (the edges belong
+  to the applications now); the keyboard tiling draws the same
+  rectangle, and that part works.
 * The tiling with the quarters (`Super+Control+1…4`) and with the top
   and the bottom half (`Super+Control+↑/↓`) works since 2026-10-24:
   the zones are mapped in `~/.config/river/init` **and** live-mapped;
@@ -107,13 +112,7 @@ call; if the latency matters, keep the venv warm (function to revisit).
 * The sound of the machine is its own feature now: `macui/sound.py`
   synthesizes the wavs (startup, trash, shutter, pop, tick, unlock,
   battery) and plays them with `paplay`.
-* The phone hub is its own feature too — see the section above: the
-  service stops again from the very same tile, and nothing is sent on
-  its own (the clipboard only moves when somebody asks for it).
 * The `open_launchpad` of the Control Centre and of the dock toggles the
   Launchpad: a second click closes it again.
-* The dock's own `show_dock` sets a time (`_dock_until`) that nothing
-  read until now; it is read now, but the dock hides itself again after
-  two seconds and a half when an application is in front.
-* The screen time of the applications is counted per day, but the
-  counter is not reset when the day changes.
+* The dock shows itself again for two and a half seconds when an
+  application is in front (`_dock_until`), and hides itself again.
