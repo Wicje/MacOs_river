@@ -56,7 +56,13 @@ class MissionControl(Panel):
         self._entry = Gtk.Entry()
         self._entry.set_can_focus(True)
         self._entry.set_no_show_all(True)
-        self.add(self._entry)
+        # the window already carries the drawing area (a bin takes one
+        # child), so the entry goes into an overlay the way Launchpad does
+        overlay = Gtk.Overlay()
+        self.remove(self.area)
+        overlay.add(self.area)
+        overlay.add_overlay(self._entry)
+        self.add(overlay)
 
     # -- lifecycle -----------------------------------------------------------
 

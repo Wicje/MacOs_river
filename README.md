@@ -138,11 +138,12 @@ the address it prints goes into the phone's browser and then:
 
 ## The snap zone
 
-macOS Sequoia draws a translucent rectangle over the half of the screen a
-window would take when it is dragged to the edge.  The shell does the
-same: the pointer at the left or the right edge of the screen shows the
-rectangle, and a click on the edge snaps the focused window into it.
-The keyboard tiling shows the same rectangle for a moment.
+The edges of the screen belong to the applications now (the dock of the
+desktop sits over them), so the shell does not draw a rectangle when the
+pointer touches an edge any more.  The tiling is done from the keyboard:
+`Super+Control+↑/↓` takes the top or the bottom half, and
+`Super+Control+1…4` the quarters; the shell draws the same translucent
+rectangle macOS Sequoia draws when a zone is taken.
 
 ## The assistant in Spotlight
 

@@ -22,7 +22,7 @@ import gi  # noqa: E402
 
 gi.require_version("Gtk", "3.0")
 
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import GLib, GLibUnix, Gtk  # noqa: E402
 
 from .macui import actions, state  # noqa: E402
 from .macui.metrics import Metrics  # noqa: E402
@@ -216,8 +216,8 @@ class Shell:
             print(f"macshell: cannot open the command fifo: {exc}",
                   file=sys.stderr, flush=True)
             return
-        GLib.unix_fd_add_full(GLib.PRIORITY_DEFAULT, fd, GLib.IO_IN,
-                               self._on_command, None)
+        GLibUnix.fd_add_full(GLib.PRIORITY_DEFAULT, fd, GLib.IOCondition.IO_IN,  # noqa: E128
+                             self._on_command, None)
 
     def _on_command(self, fd, _condition, _user_data=None):
         try:
