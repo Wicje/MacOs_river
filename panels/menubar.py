@@ -175,11 +175,22 @@ class MenuBar(Panel):
         self._wifi_x = right - glyph
         hover = (self.pointer[0] >= 0
                  and self._wifi_x <= self.pointer[0] <= self._wifi_x + glyph)
+        now = time.monotonic()
+        if hover:
+            self._wifi_hover_at = now
+        # linger a couple of seconds: the top sensor strips steal the
+        # pointer for one event and the readout would flicker away
+        hover = now - getattr(self, "_wifi_hover_at", 0) < 2.5
+        if os.environ.get("MACSHELL_EVENT_LOG"):
+            import sys as _s
+            print(f"wifi_x={self._wifi_x:.0f} pointer={self.pointer} "
+                  f"hover={hover}", file=_s.stderr, flush=True)
         if hover:
             # the speeds of the moment, revealed on hover beside the
             # icon itself instead of wearing a second badge
             rx, tx = getattr(self, "_net_speeds", (0.0, 0.0))
             label = f"↓ {traffic.human(rx)}/s   ↑ {traffic.human(tx)}/s"
+            font2 = m.font("clock_font_size")
             tw = draw.text_width(cr, label, font2)
             draw.draw_text(cr, right - glyph - 10 * s, bar / 2, label, font2,
                            pal["text_dim"], align="right", baseline="middle")

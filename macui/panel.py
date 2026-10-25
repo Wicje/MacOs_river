@@ -341,11 +341,15 @@ class Panel(Gtk.Window):
 
     def _on_enter(self, _w, _event):
         if os.environ.get("MACSHELL_EVENT_LOG"):
-            print(f"panel {self.NAMESPACE} enter", file=sys.stderr, flush=True)
+            print(f"panel {self.NAMESPACE} enter", file=sys.stderr,
+                  flush=True)
         self.area.queue_draw()
         return False
 
     def _on_leave(self, _w, _event):
+        if os.environ.get("MACSHELL_EVENT_LOG"):
+            print(f"panel {self.NAMESPACE} leave", file=sys.stderr,
+                  flush=True)
         self.pointer = (-1, -1)
         self.on_leave()
         self.area.queue_draw()
