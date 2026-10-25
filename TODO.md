@@ -43,12 +43,16 @@ What to look at:
 
 * The input region of the dock (`Dock.input_rects`) is handed to GDK
   with `gdk_window_input_shape_combine_region`.  The region is right
-  when the dock is on the screen (`(38, 30, 742, 72)`), but it is only
+  when the dock   is on the screen (`(38, 30, 742, 72)`), but it is only
   written when the surface is mapped or resized, and not when the dock
   slides.  If the region is stale, the clicks fall on the window below.
-  → Call `update_input_region()` whenever the offset of the dock
-  changes, and check whether river honours the input region of a
-  layer-shell surface at all.
+  → FIXED (2026-10-25): `update_input_region()` is now called on every
+  magnification step in `Dock._step`.  Magnification is exactly when the
+  region goes stale: the row grows outward from the centre, `shelf_x`
+  moves left, and the left end of the row — Launchpad is the first icon
+  — falls outside the old region.  Whether river honours the input
+  region of a layer-shell surface at all still has to be confirmed by a
+  real click.
 * The strips (`Sensor`) are mapped after the panels, so they get the
   pointer first.  The bottom strip is four pixels high, but it is worth
   checking that it does not overlap the row of icons.

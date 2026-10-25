@@ -497,6 +497,11 @@ class Dock(Panel):
         if not moved:
             self._animating = False
             return False
+        # magnification grows the shelf outward from the centre, so the
+        # input region must track it continuously — otherwise the row's
+        # ends (Launchpad is first) fall outside the old region and the
+        # user's click is delivered to nowhere
+        self.update_input_region()
         return True
 
     def _bounce_offset(self, index):
