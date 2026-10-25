@@ -498,6 +498,44 @@ def microphone(cr, x, y, size, color):
     cr.restore()
 
 
+def phone(cr, x, y, size, color):
+    """A phone, for the phone hub."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.4 * s)
+    r = 1.8 * s
+    x0, x1 = x + 4.8 * s, x + 11.2 * s
+    y0, y1 = y + 1.6 * s, y + 14.4 * s
+    cr.move_to(x0 + r, y0)
+    cr.line_to(x1 - r, y0)
+    cr.arc(x1 - r, y0 + r, r, -math.pi / 2, 0)
+    cr.line_to(x1, y1 - r)
+    cr.arc(x1 - r, y1 - r, r, 0, math.pi / 2)
+    cr.line_to(x0 + r, y1)
+    cr.arc(x0 + r, y1 - r, r, math.pi / 2, math.pi)
+    cr.line_to(x0, y0 + r)
+    cr.arc(x0 + r, y0 + r, r, math.pi, 3 * math.pi / 2)
+    cr.stroke()
+    # the home dot, and the two arrows of the clipboard moving both ways
+    cr.set_line_width(1.2 * s)
+    cr.arc(x + 8 * s, y + 12.6 * s, 0.55 * s, 0, 2 * math.pi)
+    cr.fill()
+    cr.move_to(x + 6.6 * s, y + 9.0 * s)
+    cr.line_to(x + 6.6 * s, y + 6.4 * s)
+    cr.move_to(x + 5.7 * s, y + 7.3 * s)
+    cr.line_to(x + 6.6 * s, y + 6.4 * s)
+    cr.line_to(x + 7.5 * s, y + 7.3 * s)
+    cr.stroke()
+    cr.move_to(x + 9.4 * s, y + 7.0 * s)
+    cr.line_to(x + 9.4 * s, y + 9.6 * s)
+    cr.move_to(x + 8.5 * s, y + 8.7 * s)
+    cr.line_to(x + 9.4 * s, y + 9.6 * s)
+    cr.line_to(x + 10.3 * s, y + 8.7 * s)
+    cr.stroke()
+    cr.restore()
+
+
 def shuffle(cr, x, y, size, color):
     """The crossed arrows of the shuffle button."""
     s = _unit(cr, x, y, size)

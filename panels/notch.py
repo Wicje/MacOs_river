@@ -37,6 +37,7 @@ ACTIONS = [
     ("screenshot", "camera", "Screenshot"),
     ("assistant", "sparkles", "Ask"),
     ("dictation", "microphone", "Dictation"),
+    ("phonehub", "phone", "Phone Hub"),
 ]
 
 
@@ -482,6 +483,8 @@ class Notch(Panel):
             lit.append("focus")
         if state.dictation_active():
             lit.append("dictation")
+        if state.phonehub_running():
+            lit.append("phonehub")
         for index, (action, glyph, label) in enumerate(actions):
             col = index % 2
             row = index // 2
@@ -627,6 +630,9 @@ class Notch(Panel):
             self.shell.assistant.open("ask")
         elif action == "dictation":
             state.toggle_dictation()
+            self.refresh()
+        elif action == "phonehub":
+            state.toggle_phonehub()
             self.refresh()
         elif action == "shuffle":
             _playerctl("shuffle")

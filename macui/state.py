@@ -11,6 +11,7 @@ import glob
 import json
 import os
 import signal
+import socket
 import subprocess
 import threading
 import time
@@ -269,7 +270,75 @@ def toggle_dictation():
         spawn(f"sh -c 'pw-record --rate 16000 --channels 1 "
               f"{DICTATION_WAV} & echo $! > {DICTATION_PID}'; "
               "sleep 1; notify-send -a Dictation 'Dictation' "
-              "'Recording — speak now, click again to stop' -t 4000")
+               "'Recording — speak now, click again to stop' -t 4000")
+
+
+# --- the phone hub ---------------------------------------------------------
+
+PHONEHUB_PID = "/tmp/phonehub.pid"
+PHONEHUB_LOG = "/tmp/phonehub.log"
+_PHONEHUB_MAIN = os.path.expanduser("~/.config/macshell/tools/phonehub.py")
+
+
+def phonehub_running():
+    """Whether the phone hub web service is up."""
+    try:
+        with open(PHONEHUB_PID) as fh:
+            pid = int(fh.read().strip())
+    except (OSError, ValueError):
+        return False
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            return b"phonehub.py" in fh.read()
+    except OSError:
+        return False
+
+
+def phonehub_address():
+    """The address the phone should open, from the service's own pair file."""
+    try:
+        with open(os.path.expanduser("~/.local/state/macshell/"
+                                     "phonehub.json")) as fh:
+            token = json.load(fh).get("token", "")
+    except (OSError, ValueError):
+        return ""
+    if not token:
+        return ""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("1.1.1.1", 53))
+        ip = s.getsockname()[0]
+        s.close()
+    except OSError:
+        ip = "127.0.0.1"
+    return f"http://{ip}:8791/?t={token}"
+
+
+def toggle_phonehub():
+    """The phone hub: the clipboard, links and files between phone and Mac."""
+    if phonehub_running():
+        try:
+            with open(PHONEHUB_PID) as fh:
+                pid = int(fh.read().strip())
+            os.kill(pid, signal.SIGTERM)
+        except (OSError, ValueError):
+            pass
+        try:
+            os.remove(PHONEHUB_PID)
+        except OSError:
+            pass
+        spawn("notify-send -a 'Phone Hub' 'Phone Hub' 'Stopped' -t 2000")
+    else:
+        spawn(f"sh -c 'python3 \"{_PHONEHUB_MAIN}\" "
+              f">{PHONEHUB_LOG} 2>&1 & echo $! > {PHONEHUB_PID}'")
+
+
+def phonehub_status():
+    """A short line for the panels."""
+    if not phonehub_running():
+        return "Off"
+    address = phonehub_address()
+    return f"Ready" if address else "No network"
 
 
 def theme_name():

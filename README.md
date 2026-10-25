@@ -113,11 +113,28 @@ The notch is the card that hangs from the top of the screen, the way macOS
   playback buttons (shuffle, previous, play, next, favourite),
 * the **clipboard** when something was just copied: the text or the picture,
   with the clipboard button lit up,
+* the **quick actions**: the clipboard, Focus, the screenshot, the
+  assistant, dictation, and the phone hub,
 * the **calendar** and the clock when there is nothing else to say.
 
 The card slides down when the pointer reaches the top of the screen and
 slides away again when it leaves.  It is connected to the media player
 through MPRIS, so any player that speaks it fills the card.
+
+## The phone hub
+
+The Continuity of the shell: `tools/phonehub.py` is a small web service the
+phone opens over the home network (nothing outside is trusted — every
+request carries the pairing token, which never leaves the laptop besides
+being shown once).  The Control Centre tile or the notch action starts it;
+the address it prints goes into the phone's browser and then:
+
+* the clipboard goes both ways, on demand only: *Send to laptop* copies
+  text into the laptop clipboard, *Refresh* and *Copy above* bring the
+  laptop's clipboard to the phone,
+* a link arrives as a notification and is opened from there,
+* a file lands in `~/Downloads/phone` without ever being renamed.
+
 
 ## The snap zone
 

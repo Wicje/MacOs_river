@@ -3,6 +3,25 @@
 The list of the open ends of the shell, in the order they should be
 picked up.  Every item says what was found out and what is missing.
 
+## 5. The phone hub — working, phone side unverified
+
+**State:** the laptop side is wired and verified (2026-10-25);
+the page was never opened from a real phone yet.
+
+* `tools/phonehub.py` serves the clipboard both ways, notifications for
+  links and `~/Downloads/phone` for files; every route carries the
+  pairing token from `~/.local/state/macshell/phonehub.json`.
+* Started and stopped from the Control Centre tile / the notch action /
+  the fifo (`echo phonehub > $XDG_RUNTIME_DIR/macshell.cmd`); the pid is
+  in `/tmp/phonehub.pid`, the log in `/tmp/phonehub.log`.
+* The page is kept friendly to insecure contexts on purpose: the hub is
+  plain `http://` on the LAN, where `navigator.clipboard` does not
+  exist, so the copy falls back to `execCommand` inside the click
+  gesture (Safari drops writes that happen after an await).
+* What a real phone still has to prove: Safari keeps the fetch alive
+  (HTTP/1.1 was turned on for that), the file upload from the pickers,
+  and a duplicate file landing as `name (1).ext`.
+
 ## 1. The Launchpad icon of the dock does not open the Launchpad
 
 **State:** not solved.  The code is right, the click never arrives.
@@ -88,6 +107,9 @@ call; if the latency matters, keep the venv warm (function to revisit).
 * The sound of the machine is its own feature now: `macui/sound.py`
   synthesizes the wavs (startup, trash, shutter, pop, tick, unlock,
   battery) and plays them with `paplay`.
+* The phone hub is its own feature too — see the section above: the
+  service stops again from the very same tile, and nothing is sent on
+  its own (the clipboard only moves when somebody asks for it).
 * The `open_launchpad` of the Control Centre and of the dock toggles the
   Launchpad: a second click closes it again.
 * The dock's own `show_dock` sets a time (`_dock_until`) that nothing

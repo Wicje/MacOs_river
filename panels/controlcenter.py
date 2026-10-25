@@ -34,6 +34,7 @@ UTILITIES = [
     ("sound", "speaker"),
     ("dictation", "microphone"),
     ("edgelight", "sun"),
+    ("phonehub", "phone"),
 ]
 
 
@@ -455,6 +456,8 @@ class ControlCentre(Panel):
             return state.theme_name() == "dark"
         if region_id == "dictation":
             return state.dictation_active()
+        if region_id == "phonehub":
+            return state.phonehub_running()
         if region_id == "edgelight":
             return self.metrics.config.get("edge_light_mode", "off") != "off"
         return False
@@ -562,6 +565,8 @@ class ControlCentre(Panel):
             state.toggle_dictation()
         elif region_id == "edgelight":
             self.shell.cycle_edge_light()
+        elif region_id == "phonehub":
+            state.toggle_phonehub()
         GLib.timeout_add(200, self.refresh)
 
     def _set_slider(self, region, x):

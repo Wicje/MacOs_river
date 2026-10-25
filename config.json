@@ -25,7 +25,8 @@
     "sound",
     "spotlight",
     "stage",
-    "launchpad"
+    "launchpad",
+    "phonehub"
   ],
   "notch_actions": [],
   "mute": true,

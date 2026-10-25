@@ -304,6 +304,9 @@ class Shell:
         elif command == "edgelight":
             self.cycle_edge_light()
             self._refresh_state()
+        elif command == "phonehub":
+            state.toggle_phonehub()
+            self._refresh_state()
         elif command == "focus":
             self.open_focus_menu()
         elif command == "screenshot":
