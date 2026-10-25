@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""mstatus-watch -- keep a menu bar badge alive, the macOS way.
+
+A status item is only as alive as the program behind it: on macOS the
+program rewrites its badge whenever its state changes, and it shows a
+soft pulse while it works.  This helper is that program for the claude
+badge of this machine: while a claude/opencode session runs it turns
+the badge orange and breathing, with the elapsed minutes as its text,
+like the community menu bar apps do; when nothing runs it rests faint.
+
+    mstatus-watch claude &
+
+Run it from the session, or keep it in a `systemctl --user` unit.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+import time
+
+POLL = 3.0
+MATCHES = ("opencode", "claude")
+EXCLUDE = ("mstatus-watch", "claude-code",)
+
+
+def _find_process():
+    """The earliest running session, with its elapsed seconds."""
+    try:
+        out = subprocess.run(
+            ["ps", "-eo", "etimes=,cmd="], capture_output=True, text=True,
+            timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    best = None
+    for line in out.splitlines():
+        line = line.strip()
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        try:
+            secs, cmd = int(parts[0]), parts[1]
+        except ValueError:
+            continue
+        if any(name in cmd for name in EXCLUDE):
+            continue
+        base = os.path.basename(cmd.split()[0])
+        if not any(base.startswith(name) for name in MATCHES):
+            continue
+        if best is None or secs > best[0]:
+            best = (secs, cmd)
+    return best
+
+
+def main():
+    badges = sys.argv[1:] or ["claude"]
+    icon = os.path.expanduser("~/.config/macshell/icons/claude.png")
+    root = os.path.dirname(os.path.abspath(__file__))
+    mstatus = os.path.join(root, "mstatus")
+    while True:
+        best = _find_process()
+        running = best is not None
+        if best is not None:
+            secs, _cmd = best
+            mins = max(1, secs // 60)
+            text = f"{mins}m" if mins < 60 else f"{mins // 60}h{mins % 60:02d}"
+        else:
+            text = ""
+        # every pass is the heartbeat of the badge, so its expiry stays
+        # fresh whether the badge is lit or resting
+        args = [sys.executable, mstatus, "set", *badges,
+                "--icon", icon,
+                "--title", "Claude is thinking" if running else "Claude",
+                "--color", "orange" if running else "text_faint",
+                "--text", text,
+                "--pulse" if running else "--no-pulse"]
+        subprocess.run(args, timeout=5,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(POLL)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass

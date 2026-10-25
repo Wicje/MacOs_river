@@ -247,5 +247,20 @@ or `#rrggbb`.  `--glyph` takes any name the shell draws
 program's own.  A click runs the `--run` command with
 `MACSHELL_STATUS_ITEM` naming the badge.
 
+A badge is alive, the way a status item is alive: the program rewrites
+it whenever its state changes and the bar repaints within its second.
+`--pulse` makes the badge breathe while the program works;
+`--text 42` carries a count or an elapsed time beside the mark.
+With a `--menu` the click becomes a pull-down, exactly as
+`statusItem.menu` replaces a plain action:
+
+```
+mstatus set claude --icon ... --menu "Open=>foot -e claude;;Status=>claude --status;;---;;Take it down=>mstatus del claude"
+```
+
+`bin/mstatus-watch claude` is the worked example: it keeps the claude
+badge lit orange and breathing with an elapsed minutes counter while a
+claude/opencode session runs, and faint when nothing does.
+
 Programs that speak the same protocol as waybar's tray speak to the same
 row through StatusNotifierItem instead -- both live together.

@@ -81,6 +81,23 @@ def cmd_set(ref, args):
     for key, value in fields.items():
         if value is not None:
             item[key] = value
+    if args.menu is not None:
+        menu = []
+        for chunk in args.menu.split(";;"):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            if chunk == "---":
+                menu.append({"label": "---"})
+                continue
+            label, _, run = chunk.partition("=>")
+            menu.append({"label": label.strip(), "run": run.strip()})
+        if menu:
+            item["menu"] = menu
+        else:
+            item.pop("menu", None)
+    if args.pulse is not None:
+        item["pulse"] = bool(args.pulse)
     item["ttl"] = float(args.ttl) if args.ttl is not None \
         else float(item.get("ttl") or DEFAULT_TTL)
     item["updated"] = time.time()
@@ -148,6 +165,11 @@ def main():
     p_set.add_argument("--color", help="text|accent|faint|orange|#hex")
     p_set.add_argument("--text", help="small count beside the glyph")
     p_set.add_argument("--run", help="command a click executes")
+    p_set.add_argument("--menu",
+                       help="pull-down on click: 'Label=>cmd;;Label=>cmd;;"
+                            "---' (a click opens the menu instead of --run)")
+    p_set.add_argument("--pulse", action=argparse.BooleanOptionalAction,
+                       help="breathe while the program works")
     p_set.add_argument("--title", help="the badge's name")
     p_set.add_argument("--ttl", type=float,
                        help=f"expiry seconds (default {DEFAULT_TTL})")

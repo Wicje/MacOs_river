@@ -50,6 +50,7 @@ class MenuBar(Panel):
         self.set_content_size(-1, height)
         self.bar_height = height
         self._items: list = []
+        self._pulse_id = None
         self._app_name = "Finder"
         self._app_id = ""
         self._battery = None
@@ -70,6 +71,15 @@ class MenuBar(Panel):
                 self._charging = "Charging" in fh.read()
         except OSError:
             self._charging = False
+        # the badges read once a second; the pulse loop only exists while
+        # one of them wants to breathe
+        self._status_items_cache = state.status_items()
+        pulsing = any(st.get("pulse") for st in self._status_items_cache)
+        if pulsing and not self._pulse_id:
+            self._pulse_id = GLib.timeout_add(66, self._pulse_tick)
+        elif not pulsing and self._pulse_id:
+            GLib.source_remove(self._pulse_id)
+            self._pulse_id = None
         self.redraw()
 
     # -- painting ------------------------------------------------------------
@@ -206,8 +216,18 @@ class MenuBar(Panel):
         # that stops beating fades out of the bar on its own.
         self._status_hits = []
         font2 = m.font("clock_font_size")
-        for st in state.status_items():
+        items = getattr(self, "_status_items_cache", None)
+        if items is None:
+            items = state.status_items()
+        for st in items:
             color = self._color_of(st, pal)
+            if st.get("pulse"):
+                # an active program: the badge breathes, the way the
+                # animated marks of the menu bar apps do
+                f = 0.5 + 0.5 * abs(math.sin(time.monotonic() * 2.6))
+                color = (*color[:3], color[3] * (0.45 + 0.55 * f))
+            else:
+                f = 1.0
             text = str(st.get("text") or "")
             tw = draw.text_width(cr, text, font2) if text else 0.0
             size = glyph
@@ -229,7 +249,7 @@ class MenuBar(Panel):
                     cr.translate(right - w0 * f, (bar - h0 * f) / 2)
                     cr.scale(f, f)
                     Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0)
-                    cr.paint()
+                    cr.paint_with_alpha(f)
                     cr.restore()
                     iw = w0 * f
             else:
@@ -322,6 +342,15 @@ class MenuBar(Panel):
     def on_scroll(self, x, y, direction):
         return False
 
+    def _pulse_tick(self):
+        """The breath of a working program's badge: ~15fps while alive."""
+        items = getattr(self, "_status_items_cache", None) or []
+        if not any(st.get("pulse") for st in items):
+            self._pulse_id = None
+            return False
+        self.redraw()
+        return True
+
     def _color_of(self, st, pal):
         """The tint of a status item: a palette key, an accent name or #hex."""
         c = str(st.get("color") or "text")
@@ -337,7 +366,12 @@ class MenuBar(Panel):
         return pal.get(c, None) or pal["text"]
 
     def _run_status_item(self, st):
-        """A click on a program's item: hand it over, the macOS way."""
+        """A click on a program's item: the menu when it has one, the
+        command otherwise, the way statusItem.menu replaces button.action."""
+        menu = st.get("menu")
+        if menu:
+            self._open_status_menu(st)
+            return
         run = str(st.get("run") or "").strip()
         if not run:
             return
@@ -349,6 +383,36 @@ class MenuBar(Panel):
                              stderr=subprocess.DEVNULL, env=env)
         except Exception:  # noqa: BLE001
             pass
+
+    def _open_status_menu(self, st):
+        """The pull-down of a program's badge, the way macOS shows it."""
+        shell = self.shell
+        rows = []
+        for entry in st.get("menu", []):
+            label = str(entry.get("label") or "")
+            if label == "---":
+                continue
+            rows.append({
+                "glyph": "claude" if st["id"] == "claude" else "grid",
+                "label": label,
+                "detail": "",
+                "active": bool(entry.get("run")),
+                "action": (lambda cmd=entry.get("run"), ref=st["id"]:
+                           subprocess.Popen(
+                               cmd, shell=True, start_new_session=True,
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL,
+                               env={**os.environ,
+                                    "MACSHELL_STATUS_ITEM": ref})
+                           if cmd else None),
+            })
+        if not rows:
+            return
+        menu = shell.popups.get("tray") or shell.popups["wifi"]
+        hit = next((r for r in getattr(self, "_status_hits", [])
+                    if r[2]["id"] == st["id"]), None)
+        menu.show_items(st.get("title") or st["id"], rows,
+                        anchor_x=(hit[0] + hit[1] / 2) if hit else None)
 
     def open_menu_by_title(self, title):
         """Open one of the application menus by name."""
