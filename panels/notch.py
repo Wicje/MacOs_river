@@ -101,8 +101,9 @@ class Notch(Panel):
         When the card slides up out of the way the region is empty, so the
         menu bar underneath keeps its clicks.
         """
-        return [(0, -self._offset, self.metrics.px("notch_width"),
-                 self.metrics.px("notch_height"))]
+        width = self.metrics.px("notch_width")
+        height = self.content_size()[1] or self.metrics.px("notch_height")
+        return [(0, -self._offset, width, height)]
 
     # -- visibility ----------------------------------------------------------
 
@@ -244,6 +245,15 @@ class Notch(Panel):
         # the quick actions on the right, the clock under them
         self._paint_actions(cr, width, height, pad, scale, pal)
         self._paint_clock(cr, width, height, pad, scale, pal)
+
+        # the divider between the left card and the numbers on the right
+        if self._activity is None and not media:
+            line_x = pad + 144 * scale
+            cr.set_source_rgba(*pal["separator"])
+            cr.set_line_width(1.0)
+            cr.move_to(line_x, 14 * scale)
+            cr.line_to(line_x, height - 14 * scale)
+            cr.stroke()
 
         cr.restore()
 
@@ -467,41 +477,73 @@ class Notch(Panel):
     # -- the quick actions and the clock --------------------------------------
 
     def _paint_actions(self, cr, width, height, pad, scale, pal):
-        """The round buttons on the right of the card."""
-        m = self.metrics
+        """The round buttons of the card: one calm row, centred.
+
+        The row sits in the space between the top edge and the clock, so
+        however many buttons the user keeps, they never land on the
+        numbers.  Only when the card is too narrow does the row wrap into
+        a second one.
+        """
         wanted = self.metrics.config.get("notch_actions")
         actions = [entry for entry in ACTIONS if not wanted
                    or entry[0] in wanted]
-        size = 30 * scale
-        gap = 10 * scale
-        x = width - pad - size * 2 - gap
-        y = 16 * scale
-        lit = []
-        if self._clip and (time.time() - self._clip.get("at", 0)) < 25:
-            lit.append("clipboard")
+        size = 24 * scale
+        gap = 7 * scale
+        usable = width - pad * 2
+        per_row = max(2, int((usable + gap) / (size + gap)))
+        rows = max(1, -(-len(actions) // per_row))
+
+        # where the row may live: under the top edge, over the clock
+        top_zone = 10 * scale
+        clock_top = height - 50 * scale
+        space = max(0.0, clock_top - top_zone)
+        grid_h = rows * size + (rows - 1) * gap
+        y = top_zone + max(0.0, space - grid_h) / 2
+        row_w = (per_row * size + (per_row - 1) * gap)
+        x0 = (width - min(row_w, usable)) / 2
+
+        pointer = getattr(self, "pointer", (-1, -1))
+        lit = set()
+        clip = self._clip or {}
+        if clip and (time.time() - clip.get("at", 0)) < 25:
+            lit.add("clipboard")
         if self._dnd:
-            lit.append("focus")
+            lit.add("focus")
         if state.dictation_active():
-            lit.append("dictation")
+            lit.add("dictation")
         if state.phonehub_running():
-            lit.append("phonehub")
+            lit.add("phonehub")
+
         for index, (action, glyph, label) in enumerate(actions):
-            col = index % 2
-            row = index // 2
-            cx = x + col * (size + gap)
+            col = index % per_row
+            row = index // per_row
+            cx = x0 + col * (size + gap)
             cy = y + row * (size + gap)
-            cr.save()
-            if action in lit:
+            hovered = (pointer[0] is not None
+                       and cx <= pointer[0] <= cx + size
+                       and cy <= pointer[1] <= cy + size)
+            on = action in lit
+            center = (cx + size / 2, cy + size / 2)
+            if on:
+                # the halo of a running feature, one ring behind the chip
+                cr.set_source_rgba(*pal["accent"], 0.30)
+                cr.arc(center[0], center[1], size / 2 + 3 * scale,
+                       0, 2 * math.pi)
+                cr.set_line_width(2.0 * scale)
+                cr.stroke()
+            if on:
                 cr.set_source_rgba(*pal["accent"])
+            elif hovered:
+                cr.set_source_rgba(*pal["text_dim"])
             else:
                 cr.set_source_rgba(*pal["fill_hover"])
-            cr.arc(cx + size / 2, cy + size / 2, size / 2, 0, 2 * math.pi)
+            cr.arc(center[0], center[1], size / 2, 0, 2 * math.pi)
             cr.fill()
-            cr.restore()
-            icon = 15 * scale
+            icon = 13 * scale
             self._draw_glyph(cr, glyph, cx + (size - icon) / 2,
                              cy + (size - icon) / 2, icon,
-                             pal["on_accent"] if action in lit else pal["text"])
+                             pal["on_accent"] if on else
+                             (pal["text"] if hovered else pal["text"]))
             self._buttons.append((action, cx, cy, size))
 
     def _paint_clock(self, cr, width, height, pad, scale, pal):
@@ -510,30 +552,33 @@ class Notch(Panel):
         now = time.localtime()
         right = width - pad
         y = height - 38 * scale
-        draw.draw_text(cr, right, y, time.strftime("%H:%M", now),
-                       m.font("notch_font_size") * 1.35, pal["text"],
-                       align="right", baseline="middle")
+        time_text = time.strftime("%H:%M", now)
+        time_w = draw.text_width(cr, time_text,
+                                 m.font("notch_font_size") * 1.35)
         detail = time.strftime("%a %-d %b", now)
         if self._battery is not None:
             detail = f"{self._battery}%  " + detail
+        draw.draw_text(cr, right, y, time_text,
+                       m.font("notch_font_size") * 1.35, pal["text"],
+                       align="right", baseline="middle")
         draw.draw_text(cr, right, y + 20 * scale, detail,
                        m.font("notch_font_size") * 0.85, pal["text_faint"],
                        align="right", baseline="middle")
-        # the lights: green while the camera streams, orange while the
-        # microphone records, the way macOS warns that someone is
-        # listening
+        # the lights: blue while the camera streams, the familiar orange
+        # while the microphone records.  They stand before the clock, so
+        # they read as indicators of the machine, not of the time.
         lights = []
         if getattr(self, "_camera", False):
             lights.append((0.21, 0.47, 0.91))
         if getattr(self, "_mic", False):
             lights.append((1.00, 0.58, 0.00))
         if lights:
-            dot = 10 * scale
-            dot_x = pad
+            dot = 8 * scale
+            dot_x = right - time_w - 24 * scale
             for color in lights:
                 draw.fill_squircle(cr, dot_x, y - dot / 2, dot, dot,
                                    dot / 2, color, 2.0)
-                dot_x += dot + 6 * scale
+                dot_x -= dot + 6 * scale
 
     def _paint_calendar(self, cr, x, y, w, h, pal):
         """The little calendar the notch shows when nothing is playing."""
@@ -544,8 +589,9 @@ class Notch(Panel):
         today = datetime.date.today()
         cy = y + h / 2
 
+        # the weekday in the red of the macOS calendar, the day bold
         draw.draw_text(cr, x, cy - 34 * scale, today.strftime("%a").upper(),
-                       11 * scale, pal["text_faint"], weight="bold",
+                       11 * scale, (0.98, 0.23, 0.19, 1.0), weight="bold",
                        baseline="middle")
         draw.draw_text(cr, x, cy, str(today.day), 40 * scale, pal["text"],
                        weight="bold", baseline="middle")

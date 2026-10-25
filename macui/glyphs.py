@@ -307,35 +307,72 @@ def check(cr, x, y, size, color):
 
 
 def clipboard(cr, x, y, size, color):
-    """A clipboard with a paper on it."""
+    """The SF Symbols clipboard: a board, a tab on top and two text lines."""
     s = _unit(cr, x, y, size)
     cr.save()
     cr.set_source_rgba(*color)
-    cr.rectangle(x + 3 * s, y + 3 * s, 10 * s, 11 * s)
-    cr.fill()
-    cr.set_source_rgba(*color)
-    cr.set_line_width(1.3 * s)
-    cr.rectangle(x + 4.5 * s, y + 5.5 * s, 7 * s, 8 * s)
+    r = 1.6 * s
+    bx0, bx1 = x + 3.0 * s, x + 13.0 * s
+    by0, by1 = y + 2.6 * s, y + 14.0 * s
+    cr.set_line_width(1.4 * s)
+    # the board with rounded corners
+    cr.move_to(bx0 + r, by0)
+    cr.line_to(bx1 - r, by0)
+    cr.arc(bx1 - r, by0 + r, r, -math.pi / 2, 0)
+    cr.line_to(bx1, by1 - r)
+    cr.arc(bx1 - r, by1 - r, r, 0, math.pi / 2)
+    cr.line_to(bx0 + r, by1)
+    cr.arc(bx0 + r, by1 - r, r, math.pi / 2, math.pi)
+    cr.line_to(bx0, by0 + r)
+    cr.arc(bx0 + r, by0 + r, r, math.pi, 3 * math.pi / 2)
     cr.stroke()
-    cr.rectangle(x + 5.5 * s, y + 1.5 * s, 5 * s, 3 * s)
-    cr.fill()
+    # the clip tab that grips the top edge
+    tab_w = 4.6 * s
+    cr.move_to(x + 8 * s - tab_w / 2, by0 + 0.7 * s)
+    cr.line_to(x + 8 * s - tab_w / 2, y + 3.6 * s)
+    cr.arc(x + 8 * s, y + 3.6 * s, tab_w / 2, math.pi, 0)
+    cr.line_to(x + 8 * s + tab_w / 2, by0 + 0.7 * s)
+    cr.stroke()
+    # the two lines of the copied text
+    cr.move_to(x + 5.8 * s, y + 7.4 * s)
+    cr.line_to(x + 10.2 * s, y + 7.4 * s)
+    cr.stroke()
+    cr.move_to(x + 5.8 * s, y + 10.2 * s)
+    cr.line_to(x + 10.2 * s, y + 10.2 * s)
+    cr.stroke()
     cr.restore()
 
 
 def camera(cr, x, y, size, color):
-    """A camera, the way macOS draws the screenshot button."""
+    """The SF Symbols camera: a soft body over a ringed lens."""
     s = _unit(cr, x, y, size)
     cr.save()
     cr.set_source_rgba(*color)
     cr.set_line_width(1.4 * s)
-    cr.rectangle(x + 1.5 * s, y + 4.5 * s, 13 * s, 8.5 * s)
+    r = 2.2 * s
+    bx0, bx1 = x + 1.5 * s, x + 14.5 * s
+    by0, by1 = y + 4.5 * s, y + 13.5 * s
+    # the body: rounded, with the viewfinder bump on the top edge
+    cr.move_to(bx0 + r, by0)
+    cr.line_to(bx1 - r, by0)
+    cr.arc(bx1 - r, by0 + r, r, -math.pi / 2, 0)
+    cr.line_to(bx1, by1 - r)
+    cr.arc(bx1 - r, by1 - r, r, 0, math.pi / 2)
+    cr.line_to(bx0 + r, by1)
+    cr.arc(bx0 + r, by1 - r, r, math.pi / 2, math.pi)
+    cr.line_to(bx0, by0 + r)
+    cr.arc(bx0 + r, by0 + r, r, math.pi, 3 * math.pi / 2)
     cr.stroke()
-    cr.move_to(x + 5 * s, y + 4.5 * s)
-    cr.line_to(x + 6.5 * s, y + 2.5 * s)
-    cr.line_to(x + 9.5 * s, y + 2.5 * s)
-    cr.line_to(x + 11 * s, y + 4.5 * s)
+    # the bump of the viewfinder
+    cr.move_to(x + 5.4 * s, by0)
+    cr.line_to(x + 6.2 * s, y + 2.4 * s)
+    cr.arc(x + 8 * s, y + 2.4 * s, 1.8 * s, math.pi, 0)
+    cr.line_to(x + 9.8 * s, by0)
     cr.stroke()
-    cr.arc(x + 8 * s, y + 8.8 * s, 2.6 * s, 0, 2 * math.pi)
+    # the lens: a ring, filled heart, like SF's camera
+    cr.arc(x + 8 * s, y + 9.0 * s, 2.5 * s, 0, 2 * math.pi)
+    cr.stroke()
+    cr.arc(x + 8 * s, y + 9.0 * s, 1.0 * s, 0, 2 * math.pi)
     cr.fill()
     cr.restore()
 
