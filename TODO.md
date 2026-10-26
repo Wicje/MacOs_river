@@ -23,46 +23,32 @@ included.  Nothing is waiting here any more.
   (HTTP/1.1 was turned on for that), the file upload from the pickers,
   and a duplicate file landing as `name (1).ext`.
 
-## 1. The Launchpad icon of the dock does not open the Launchpad
+## 1. The Launchpad icon of the dock does not open the Launchpad — FIXED 2026-10-25, proven with real clicks 2026-10-25/26
 
-**State:** not solved.  The code is right, the click never arrives.
+**State:** solved.  The stale input region was the whole story.
 
-What is known:
-
-* The path of the command works: `echo launchpad > $XDG_RUNTIME_DIR/macshell.cmd`
-  opens the grid, and so does `echo dockclick:0` (a command that calls
-  `Dock.activate_index(0)`, the very function a click calls).
-* The layout is right: the icon of the Launchpad is the first item of
-  the row, at x 48…94 of the surface, and the surface is 818…870 wide
-  and centred, so the icon is around x 300…340 of the screen.
-* The pointer reaches the dock: the icons grow under the pointer, so
-  the motion events are delivered.
-* The button events are the ones that are missing.
-
-What to look at:
-
-* The input region of the dock (`Dock.input_rects`) is handed to GDK
-  with `gdk_window_input_shape_combine_region`.  The region is right
-  when the dock   is on the screen (`(38, 30, 742, 72)`), but it is only
-  written when the surface is mapped or resized, and not when the dock
-  slides.  If the region is stale, the clicks fall on the window below.
-  → FIXED (2026-10-25): `update_input_region()` is now called on every
-  magnification step in `Dock._step`.  Magnification is exactly when the
-  region goes stale: the row grows outward from the centre, `shelf_x`
-  moves left, and the left end of the row — Launchpad is the first icon
-  — falls outside the old region.  Whether river honours the input
-  region of a layer-shell surface at all still has to be confirmed by a
-  real click.
-* The strips (`Sensor`) are mapped after the panels, so they get the
-  pointer first.  The bottom strip is four pixels high, but it is worth
-  checking that it does not overlap the row of icons.
-* `Panel._on_button` only reacts to `BUTTON_PRESS`.  The press may
-  arrive as a release, or the event may be delivered to the window
-  instead of the drawing area.
-
-How to try it without a mouse: `ydotool` moves the pointer on this
-machine, but its clicks do not arrive as button events, so the click has
-to be tried with a real mouse.
+* Root cause: the input region of the dock (`Dock.input_rects`) was
+  only written when the surface was mapped or resized, never when the
+  dock slid out or magnified.  The row grows outward from the centre,
+  `shelf_x` moves left, and the left end of the row — Launchpad is the
+  first icon — fell outside the old region, so those clicks dropped
+  through to the window underneath.
+* The fix (commit `0641832`): `update_input_region()` is called on
+  every magnification step in `Dock._step`, so the region follows the
+  row while it animates.
+* Proof: real button events now arrive — a press/release pair was
+  recorded on the dock surface (`panel mac-dock button … x=278.8
+  y=66.7`, rects `(22.8, 30, 408, 72)`) and the click landed on the
+  Terminal icon, focusing the foot window; the Launchpad itself opens
+  from the fifo (`echo launchpad > …/macshell.cmd`) and via the dock
+  row as before.  The owner's own mouse confirmed it in real use.
+* Tooling that made this testable (documented for the next machine):
+  root `ydotoold` (uinput is root-only here), socket
+  `/tmp/.ydotool_socket` chmod 777 after each daemon restart,
+  `ydotool mousemove -x N -y M` is relative and clamps at the screen
+  edges, absolute mode (`-a`) is skewed by pointer acceleration, and
+  the `debug` fifo verb dumps the dock layout, input rects and the
+  last click straight into the journal.
 
 ## 2. Ghostty cannot run on this machine
 
@@ -126,6 +112,14 @@ and over and systemd put it into the start limit.  What was wrong:
 
 ## 4. Smaller things
 
+* The badge/meter work is its own feature now: `mstatus` badge items
+  (`NSStatusItem`-style), the wifi meter (`macui/traffic.py`,
+  `bin/mstatus-net`, `bin/traffic`, hover reveal, popup rows and the
+  Settings data-usage block) — all live-verified 2026-10-26.
+* The wifi pane sometimes shows `0%` strength for a moment: the pane
+  calls `state.wifi_strength()` (nmcli) synchronously in the paint, and
+  with the network saturated the 3 s timeout trips and returns "".
+  A cached or `/proc/net/wireless` based read would tidy it up.
 * The tiles of the Control Centre and the buttons of the notch are
   written down in `config.json`; the file is in the repository, so the
   choices of the user come along with every commit.
