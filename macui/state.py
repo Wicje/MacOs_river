@@ -93,15 +93,59 @@ def wifi_ssid():
     return ""
 
 
+_WIFI_STRENGTH = {"at": 0.0, "value": 0}
+
+
+def _proc_wifi_strength():
+    """The signal straight from the kernel, without a round trip to nmcli.
+
+    /proc/net/wireless keeps `dBm` on this card; the plain scale the
+    icons know is approximated the way the wireless tools do it.
+    """
+    try:
+        with open("/proc/net/wireless") as fh:
+            for line in fh:
+                parts = line.split()
+                if ":" not in parts[0] or parts[0].startswith("Inter"):
+                    continue
+                dbm = float(parts[3])
+                percent = (dbm + 100) * 2
+                return max(0, min(100, int(percent)))
+    except (OSError, IndexError, ValueError):
+        pass
+    return -1
+
+
 def wifi_strength():
-    out = run("nmcli -t -f SIGNAL device wifi")
+    """A cached read so the pane never stalls in a paint.
+
+    nmcli under a saturated link can trip the 3 s timeout of `run`, which
+    used to leave the pane with 0% for a moment.  The last good value is
+    kept for ten seconds and the kernel gives the fallback for free.
+    """
+    now = time.monotonic()
+    if now - _WIFI_STRENGTH["at"] < 10.0:
+        return _WIFI_STRENGTH["value"]
+    out = run("nmcli -t -f SIGNAL device wifi", timeout=1.5)
     for line in out.splitlines():
-        if ":" in line:
-            try:
-                return int(line.split(":")[1])
-            except ValueError:
-                pass
-    return 0
+        line = line.strip()
+        # plain `nmcli -t -f SIGNAL` prints bare numbers; the tabular
+        # form (SIGNAL:100) is kept as the fallback parse
+        text = line.split(":", 1)[1].strip() if ":" in line else line
+        try:
+            value = int(text)
+        except ValueError:
+            continue
+        if 0 <= value <= 100:
+            _WIFI_STRENGTH["at"] = now
+            _WIFI_STRENGTH["value"] = value
+            return value
+    fallback = _proc_wifi_strength()
+    if fallback >= 0:
+        _WIFI_STRENGTH["at"] = now
+        _WIFI_STRENGTH["value"] = fallback
+        return fallback
+    return _WIFI_STRENGTH["value"]
 
 
 def toggle_wifi():

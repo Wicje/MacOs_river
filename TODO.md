@@ -1,7 +1,27 @@
 # What is left to do
 
-The list of the open ends of the shell, in the order they should be
-picked up.  Every item says what was found out and what is missing.
+The list of the open ends of the shell.  Everything that could be
+finished by the machine is finished — the only ends that stay open are
+the ones that need the owner in the room (a real phone, a real mouse,
+a real voice).
+
+## What is actually left
+
+* The phone hub, with the owner's phone in hand: Safari keeping the
+  fetch alive, one file upload through the pickers, and a duplicate
+  file landing as `name (1).ext`.  (Section 5 below carries the whole
+  story; nothing to code.)
+* The wifi pane now answers at once even when the link is saturated —
+  the strength read is cached for ten seconds, gets its timeout cut to
+  1.5 s, and falls back to `/proc/net/wireless` if nmcli does not come
+  back; the real fix though was the parse itself: this nmcli prints
+  bare numbers (`100`), not `SIGNAL:100`, so strength had *always*
+  read 0% in the pane — found and fixed 2026-10-26, the pane shows
+  100% live.
+* Ghostty stays out of the dock (section 2): permanent by hardware, no
+  action possible.
+
+Everything below is the record of what was found and fixed.
 
 ## 5. The phone hub — verified by the owner 2026-10-25
 
@@ -116,10 +136,11 @@ and over and systemd put it into the start limit.  What was wrong:
   (`NSStatusItem`-style), the wifi meter (`macui/traffic.py`,
   `bin/mstatus-net`, `bin/traffic`, hover reveal, popup rows and the
   Settings data-usage block) — all live-verified 2026-10-26.
-* The wifi pane sometimes shows `0%` strength for a moment: the pane
-  calls `state.wifi_strength()` (nmcli) synchronously in the paint, and
-  with the network saturated the 3 s timeout trips and returns "".
-  A cached or `/proc/net/wireless` based read would tidy it up.
+* The wifi `0%` strength read — FIXED 2026-10-26: see the top of this
+  file; the pane calls `state.wifi_strength()` (nmcli) synchronously in
+  the paint, and with the network saturated the 3 s timeout used to
+  trip and return ""; but the parse itself was the deeper bug and is
+  corrected with a 10 s cache and a kernel fallback.
 * The tiles of the Control Centre and the buttons of the notch are
   written down in `config.json`; the file is in the repository, so the
   choices of the user come along with every commit.
