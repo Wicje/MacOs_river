@@ -7,6 +7,17 @@ a real voice).
 
 ## What is actually left
 
+* The notch shelf is the AirDrop stand-in: right-click a card and it
+  goes to the nearest LocalSend receiver (the protocol is spoken
+  directly in `macui/localsend.py` — discovery on UDP
+  224.0.0.167:53317, then `prepare-upload2` + `upload`; HTTPS first,
+  HTTP fallback, the receiver's PIN accepted from the 401 answer).
+  AirDrop itself is impossible on this hardware — the Broadcom 4313
+  cannot do AWDL.  Still open: with real phones in the room the
+  consent tap happens on the receiver; and if two receivers answer at
+  once we only take the first (phones first, then others) — a device
+  chooser would be nicer, plus a send in hand to confirm the whole
+  round with the owner's LocalSend running.
 * The phone hub, with the owner's phone in hand: Safari keeping the
   fetch alive, one file upload through the pickers, and a duplicate
   file landing as `name (1).ext`.  (Section 5 below carries the whole

@@ -15,6 +15,7 @@ import math
 import json
 import os
 import subprocess
+import threading
 import time
 
 import cairo
@@ -26,7 +27,7 @@ gi.require_version("GdkPixbuf", "2.0")
 
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
 
-from ..macui import draw, glyphs, state  # noqa: E402
+from ..macui import draw, glyphs, localsend, state  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 ART_CACHE = "/tmp/macshell-art"
@@ -110,6 +111,7 @@ class Notch(Panel):
         self._shelf_shown = False
         self._shelf_hover = False
         self._shelf_max = 24
+        self._shelf_pointer = (-1.0, -1.0)
         self._load_shelf()
         self._shelf_wire_dnd()
 
@@ -572,9 +574,39 @@ class Notch(Panel):
         cols = 2
         shown = self._shelf[: cols * 2]
         row = height if False else None
+        # the pointer, the same room the card buttons measure in
+        px, py = self._shelf_pointer
+        hovered = -1
+        for index, _path in enumerate(shown):
+            col = index % cols
+            hx = x + 10 * scale + col * (cell + gap)
+            hy = y + 8 * scale + (index // cols) * (cell + gap)
+            if hx - 2 * scale <= px <= hx + cell + 2 * scale and \
+                    hy - 2 * scale <= py <= hy + cell + 2 * scale:
+                hovered = index
+                break
         for index, path in enumerate(shown):
             col = index % cols
             gx = x + 10 * scale + col * (cell + gap)
+            gy = y + 8 * scale + (index // cols) * (cell + gap)
+            if index == hovered:
+                chip = 13 * scale
+                cx, cy = gx + cell - chip, gy - 2 * scale
+                draw.fill_squircle(cr, cx, cy, chip, chip, 5 * scale,
+                                   (1.0, 0.34, 0.32, 1.0), m.squareness)
+                cr.set_source_rgba(1.0, 1.0, 1.0, 0.9)
+                cr.set_line_width(1.1 * scale)
+                off = chip * 0.30
+                cr.move_to(cx + off, cy + off)
+                cr.line_to(cx + chip - off, cy + chip - off)
+                cr.stroke()
+                cr.move_to(cx + chip - off, cy + off)
+                cr.line_to(cx + off, cy + chip - off)
+                cr.stroke()
+                # the chip wins the hit test: it is offered before the card
+                self._buttons.insert(
+                    0, ("shelf:del:%d" % index, cx - 3 * scale,
+                        cy - 3 * scale, chip + 6 * scale))
             gy = y + 8 * scale + (index // cols) * (cell + gap)
             draw.fill_squircle(cr, gx, gy, cell, cell, 8 * scale,
                                pal["fill_hover"], m.squareness)
@@ -609,12 +641,11 @@ class Notch(Panel):
                                f"+{extra} more", 9 * scale,
                                pal["text_faint"], align="center",
                                baseline="middle")
-            # the gentle way out: a hover strip on the right that clears
-            label = "Right-click a card to put it away"
-            draw.draw_text(cr, x + w / 2, y + h - 12 * scale, label
-                           if extra <= 0 else label, 8.0 * scale,
-                           pal["text_faint"], align="center",
-                           baseline="middle")
+            else:
+                draw.draw_text(cr, x + w / 2, y + h - 12 * scale,
+                               "Click opens · right-click sends", 8.0 * scale,
+                               pal["text_faint"], align="center",
+                               baseline="middle")
         else:
             draw.draw_text(cr, x + w / 2, y + h / 2, "Drop files here",
                            11 * scale, pal["text_dim"], align="center",
@@ -650,6 +681,32 @@ class Notch(Panel):
             if not self._shelf:
                 self._shelf_shown = False
             self.redraw()
+
+    def _send_shelf(self, index):
+        """AirDrop in disguise: the card goes to a LocalSend receiver.
+
+        The discovery and the send take seconds, so they run on a
+        worker thread and only the notification comes back to the UI.
+        """
+        if not (0 <= index < len(self._shelf)):
+            return
+        path = self._shelf[index]
+        if not os.path.exists(path):
+            self._remove_shelf(index)
+            return
+        self.shell.show_message("Send", "Looking for nearby devices…")
+        threading.Thread(target=self._send_runner, args=(path,),
+                         daemon=True).start()
+
+    def _send_runner(self, path):
+        device, ok, reason = localsend.send(path)
+        def tell():
+            if ok:
+                self.shell.show_message("Send",
+                                        "Sent to %s." % device["alias"])
+            else:
+                self.shell.show_message("Send", reason)
+        GLib.idle_add(tell)
 
     def _paint_timer(self, cr, width, height, pad, scale, pal):
         """The focus page: a red ring over the time that is left.
@@ -1026,6 +1083,12 @@ class Notch(Panel):
 
     def on_motion(self, x, y):
         self.shell.keep_alive("notch")
+        moved = self._shelf_pointer != (x, y)
+        self._shelf_pointer = (x, y)
+        # the remove chip of the shelf card follows the pointer, so the
+        # page needs a small repaint while the pointer walks a card
+        if moved and self._shelf_shown and self._shelf:
+            self.redraw()
         return False
 
     def _open_shelf_item(self, action):
@@ -1049,11 +1112,15 @@ class Notch(Panel):
                 elif action == "page:shelf":
                     self._shelf_shown = True
                     self.redraw()
+                elif action.startswith("shelf:del:"):
+                    self._remove_shelf(int(action.rsplit(":", 1)[1]))
                 elif action.startswith("shelf:open:"):
                     index = int(action.split(":open:", 1)[1]
                                 .split("|", 1)[0])
-                    self._open_shelf_item(action) if button != 3 else \
-                        self._remove_shelf(index)
+                    if button == 3:
+                        self._send_shelf(index)
+                    else:
+                        self._open_shelf_item(action)
                 else:
                     self._activate(action)
                 return True
