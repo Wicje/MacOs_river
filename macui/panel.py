@@ -118,6 +118,7 @@ class Panel(Gtk.Window):
         self._offset = 0.0
         self._offset_target = 0.0
         self._offset_done = None
+        self._velocity = 0.0
 
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_namespace(self, namespace or self.NAMESPACE)
@@ -248,7 +249,7 @@ class Panel(Gtk.Window):
     def _slide_tick(self, _widget, _clock):
         current = self._offset
         target = self._offset_target
-        if abs(target - current) < 0.5:
+        if abs(target - current) < 0.5 and abs(self._velocity) < 2.0:
             self._offset = target
             self.area.queue_draw()
             self._slide_source = None
@@ -258,7 +259,19 @@ class Panel(Gtk.Window):
             if done:
                 done()
             return False
-        self._offset = current + (target - current) * 0.4
+        # most panels ease the way they always did; the notch springs, so
+        # the card overshoots a little and settles, the way macOS shows
+        # the Dynamic Island breathing in and out
+        if getattr(self, "spring_slide", False):
+            # a lightly damped spring: acceleration follows the pulled
+            # distance, and the velocity eases the card past the stop
+            stiffness, damping = 0.02, 0.25
+            self._velocity = (self._velocity * (1.0 - damping)
+                              + (target - current) * stiffness)
+            self._offset = current + self._velocity
+        else:
+            self._velocity = 0.0
+            self._offset = current + (target - current) * 0.4
         self.area.queue_draw()
         # while it slides, the shelves of the surface move, and so does the
         # region of the surface the pointer belongs to

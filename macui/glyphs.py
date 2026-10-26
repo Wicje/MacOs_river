@@ -535,6 +535,32 @@ def wand(cr, x, y, size, color):
     cr.restore()
 
 
+def timer(cr, x, y, size, color, fraction=1.0, active=False):
+    """The focus timer chip: a ring whose running part fills red."""
+    s = size / 16.0
+    cr.save()
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    cx, cy = x + 8 * s, y + 8 * s
+    r = 5.4 * s
+    # the empty part of the ring, in the colour of the chip
+    cr.set_line_width(1.7 * s)
+    cr.set_source_rgba(*color)
+    cr.arc(cx, cy, r, 0, 2 * math.pi)
+    cr.stroke()
+    # the passed part of the focus, filled red like Nusa's ring
+    if 0.0 <= fraction < 1.0:
+        red = (1.0, 0.34, 0.32, 1.0)
+        cr.set_source_rgba(*red)
+        cr.arc(cx, cy, r, -math.pi / 2,
+               -math.pi / 2 + 2 * math.pi * max(0.01, fraction))
+        cr.stroke()
+    if active:
+        cr.set_source_rgba(1.0, 0.34, 0.32, 1.0)
+        cr.arc(cx, cy, 1.7 * s, 0, 2 * math.pi)
+        cr.fill()
+    cr.restore()
+
+
 def microphone(cr, x, y, size, color):
     """The microphone of the dictation, drawn like the SF Symbols mic."""
     s = _unit(cr, x, y, size)
