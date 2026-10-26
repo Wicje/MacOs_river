@@ -220,8 +220,10 @@ class Notch(Panel):
         cr.clip()
         grad = cairo.LinearGradient(0, 0, 0, height)
         if dark:
-            grad.add_color_stop_rgba(0.0, 0.023, 0.023, 0.028, 1.0)
-            grad.add_color_stop_rgba(1.0, 0.055, 0.055, 0.07, 0.99)
+            # macOS paints the notch in ink and lets only its lower lip
+            # catch a whisper of light
+            grad.add_color_stop_rgba(0.0, 0.006, 0.006, 0.008, 1.0)
+            grad.add_color_stop_rgba(1.0, 0.032, 0.032, 0.04, 1.0)
         else:
             grad.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 0.97)
             grad.add_color_stop_rgba(1.0, 0.93, 0.93, 0.95, 0.95)
@@ -237,6 +239,17 @@ class Notch(Panel):
         cr.set_source(under)
         cr.rectangle(0, height - 8 * scale, width, 8 * scale)
         cr.fill()
+        cr.restore()
+        # the glass edge of Tahoe: one hairline of light riding the
+        # border a pixel inside, softer at the bottom corners
+        cr.save()
+        draw.rounded_path(cr, 0.6 * scale, 0.6 * scale, width - 1.2 * scale,
+                          height - 1.2 * scale,
+                          radius - 0.6 * scale)
+        cr.set_source_rgba(1.0, 1.0, 1.0,
+                           0.075 if dark else 0.55)
+        cr.set_line_width(1.0)
+        cr.stroke()
         cr.restore()
         if not dark:
             draw.stroke_squircle(cr, 0, 0, width, height, radius,
@@ -767,7 +780,7 @@ class Notch(Panel):
         # the album art
         art_x = pad
         art_y = 16 * scale
-        draw.fill_squircle(cr, art_x, art_y, art, art, 10 * scale,
+        draw.fill_squircle(cr, art_x, art_y, art, art, 12 * scale,
                            pal["fill_hover"], m.squareness)
         if self._art is not None:
             pw, ph = self._art.get_width(), self._art.get_height()
@@ -789,12 +802,12 @@ class Notch(Panel):
         # on the right, the way the closed notch of Nusa carries its wave
         text_x = art_x + art + 16 * scale
         draw.draw_text(cr, text_x, 34 * scale, title or "",
-                       m.font("notch_font_size") * 1.15, pal["text"],
+                       m.font("notch_font_size") * 1.25, pal["text"],
                        weight="bold", baseline="middle",
                        max_width=220 * scale, ellipsize=True)
         if artist:
-            draw.draw_text(cr, text_x, 56 * scale, artist,
-                           m.font("notch_font_size") * 0.95, pal["text_dim"],
+            draw.draw_text(cr, text_x, 58 * scale, artist,
+                           m.font("notch_font_size") * 1.0, pal["text_dim"],
                            baseline="middle", max_width=220 * scale,
                            ellipsize=True)
         playing = (_status or "").lower() == "playing"
@@ -811,13 +824,14 @@ class Notch(Panel):
         bar_y = 92 * scale
         draw.draw_text(cr, pad, bar_y, _clock(position), 10 * scale,
                        pal["text_faint"], baseline="middle")
-        draw.fill_squircle(cr, bar_x, bar_y - 1.5 * scale, bar_w, 3 * scale,
-                           1.5 * scale, pal["fill_hover"], 2.0)
+        draw.fill_squircle(cr, bar_x, bar_y - 1.75 * scale, bar_w,
+                           3.5 * scale, 1.75 * scale, pal["fill_hover"], 2.0)
         if length:
             ratio = max(0.0, min(1.0, position / length))
-            draw.fill_squircle(cr, bar_x, bar_y - 1.5 * scale,
-                               bar_w * ratio, 3 * scale, 1.5 * scale,
-                               pal["text_dim"], 2.0)
+            draw.fill_squircle(cr, bar_x, bar_y - 1.75 * scale,
+                               bar_w * ratio, 3.5 * scale, 1.75 * scale,
+                               pal["text"] if pal["text"][3] > 0.9
+                               else pal["text_dim"], 2.0)
         draw.draw_text(cr, bar_x + bar_w + 10 * scale, bar_y, _clock(length),
                        10 * scale, pal["text_faint"], baseline="middle")
 
@@ -907,15 +921,15 @@ class Notch(Panel):
         wanted = self.metrics.config.get("notch_actions")
         actions = [entry for entry in ACTIONS if not wanted
                    or entry[0] in wanted]
-        size = 24 * scale
-        gap = 7 * scale
+        size = 26 * scale
+        gap = 6 * scale
         usable = width - pad * 2
         per_row = max(2, int((usable + gap) / (size + gap)))
         rows = max(1, -(-len(actions) // per_row))
 
         # where the row may live: under the top edge, over the clock
         top_zone = 10 * scale
-        clock_top = height - 50 * scale
+        clock_top = height - 56 * scale
         space = max(0.0, clock_top - top_zone)
         grid_h = rows * size + (rows - 1) * gap
         y = top_zone + max(0.0, space - grid_h) / 2
@@ -972,7 +986,7 @@ class Notch(Panel):
             cr.set_source_rgba(*fill)
             cr.arc(center[0], center[1], size / 2, 0, 2 * math.pi)
             cr.fill()
-            icon = 13 * scale
+            icon = 14 * scale
             if glyph == "timer":
                 icon_color = ((1.0, 1.0, 1.0, 1.0) if timer_running
                               else (pal["text"] if hovered else pal["text"]))
@@ -993,18 +1007,23 @@ class Notch(Panel):
         m = self.metrics
         now = time.localtime()
         right = width - pad
-        y = height - 38 * scale
+        y = height - 42 * scale
         time_text = time.strftime("%H:%M", now)
-        time_w = draw.text_width(cr, time_text,
-                                 m.font("notch_font_size") * 1.35)
+        time_size = m.font("notch_font_size") * 1.55
+        draw.draw_text(cr, right, y, time_text, time_size, pal["text"],
+                       weight="bold", align="right", baseline="middle")
         detail = time.strftime("%a %-d %b", now)
+        detail_size = m.font("notch_font_size") * 0.92
+        detail_w = draw.text_width(cr, detail, detail_size)
         if self._battery is not None:
-            detail = f"{self._battery}%  " + detail
-        draw.draw_text(cr, right, y, time_text,
-                       m.font("notch_font_size") * 1.35, pal["text"],
-                       align="right", baseline="middle")
-        draw.draw_text(cr, right, y + 20 * scale, detail,
-                       m.font("notch_font_size") * 0.85, pal["text_faint"],
+            # a small pill of charge before the date, macOS style
+            pill = 17 * scale
+            glyphs.battery(cr, right - detail_w - 6 * scale - pill, y + 2 * scale,
+                           pill, pal["text_dim"],
+                           level=self._battery / 100.0,
+                           charging=self._charging)
+        draw.draw_text(cr, right, y + 23 * scale, detail,
+                       detail_size, pal["text_faint"],
                        align="right", baseline="middle")
         # the lights: blue while the camera streams, the familiar orange
         # while the microphone records.  They stand before the clock, so

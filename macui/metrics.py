@@ -76,10 +76,10 @@ BASE = {
     # notch
     "notch_width": 520,
     "notch_height": 140,
-    "notch_radius": 20,
-    "notch_pad": 16,
+    "notch_radius": 26,
+    "notch_pad": 18,
     "notch_art": 44,
-    "notch_font_size": 12,
+    "notch_font_size": 13,
     # dropdown menus
     "menu_width": 210,
     "menu_item_h": 22,
