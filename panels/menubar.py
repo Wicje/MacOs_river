@@ -318,6 +318,7 @@ class MenuBar(Panel):
                 else:
                     self.shell.tray_item(item)
                 return True
+        reach = 4 * m.scale
         for slot_x, slot_w, st in getattr(self, "_status_hits", []):
             if slot_x <= x <= slot_x + slot_w:
                 self._run_status_item(st)
@@ -331,24 +332,30 @@ class MenuBar(Panel):
             self.shell.open_popup("battery", x)
             return True
         if hasattr(self, "_mic_x") and \
-                self._mic_x <= x <= self._mic_x + m.px("status_glyph"):
+                self._mic_x - reach <= x <= self._mic_x + \
+                m.px("status_glyph") + reach:
             if button == 1:
                 state.toggle_dictation()
                 self.redraw()
             return True
         if hasattr(self, "_profile_x") and \
-                self._profile_x <= x <= self._profile_x + m.px("status_glyph"):
+                self._profile_x - reach <= x <= self._profile_x + \
+                m.px("status_glyph") + reach:
             self.shell.open_profiles_menu(x)
             return True
         if hasattr(self, "_wifi_x") and \
-                self._wifi_x <= x <= self._wifi_x + m.px("status_glyph"):
+                self._wifi_x - reach <= x <= self._wifi_x + \
+                m.px("status_glyph") + reach:
             self.shell.open_popup("wifi", x)
             return True
-        if hasattr(self, "_cc_x") and self._cc_x <= x <= self._cc_x + m.px("status_glyph"):
+        if hasattr(self, "_cc_x") and \
+                self._cc_x - reach <= x <= self._cc_x + \
+                m.px("status_glyph") + reach:
             self.shell.toggle_control_center()
             return True
         if hasattr(self, "_spotlight_x") and \
-                self._spotlight_x <= x <= self._spotlight_x + m.px("status_glyph"):
+                self._spotlight_x - reach <= x <= self._spotlight_x + \
+                m.px("status_glyph") + reach:
             self.shell.open_spotlight()
             return True
         for item in self._items:

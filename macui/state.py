@@ -255,11 +255,6 @@ def set_power_mode(mode):
     if mode not in ("performance", "balanced", "power-saver"):
         return
     spawn(f"powerprofilesctl set {mode}")
-    if "power-saver" in out:
-        return "power-saver"
-    if "performance" in out:
-        return "performance"
-    return "balanced"
 
 
 def battery_level():
