@@ -324,22 +324,42 @@ _VOICE_STT = f"{os.path.expanduser('~')}/bin/_voice.py"
 
 
 def dictation_active():
-    """Whether the microphone is recording for the dictation button."""
-    try:
-        with open(DICTATION_PID) as fh:
-            pid = int(fh.read().strip())
-    except (OSError, ValueError):
-        return False
-    try:
-        with open(f"/proc/{pid}/cmdline", "rb") as fh:
-            return b"pw-record" in fh.read()
-    except OSError:
-        return False
+    """Whether any recorder is out there taking down the dictation.
+
+    The pid file of the button names only the newest recorder, so the
+    whole machine is asked too: a click that reached us twice could
+    otherwise leave petered orphans nobody can stop again.
+    """
+    return bool(_dictation_pids())
+
+
+def _dictation_pids():
+    """The pids of every pw-record that writes the dictation wav."""
+    want = os.path.basename(DICTATION_WAV).encode()
+    found = []
+    for name in os.listdir("/proc"):
+        if not name.isdigit():
+            continue
+        try:
+            with open(f"/proc/{name}/cmdline", "rb") as fh:
+                blob = fh.read().replace(b"\0", b" ")
+        except OSError:
+            continue
+        if b"pw-record" in blob and want in blob:
+            found.append(int(name))
+    return found
 
 
 def toggle_dictation():
     """Start the microphone, and stop it by typing what was said."""
     if dictation_active():
+        # every recorder still breathing is stopped, not just the one
+        # the pid file happens to name
+        for pid in _dictation_pids():
+            try:
+                os.kill(pid, signal.SIGINT)
+            except OSError:
+                pass
         try:
             with open(DICTATION_PID) as fh:
                 pid = int(fh.read().strip())
@@ -349,10 +369,11 @@ def toggle_dictation():
         spawn(f'sh -c text=$("{_VOICE}" "{_VOICE_STT}" stt "{DICTATION_WAV}" '
               '--language en --model base 2>/dev/null); '
               'notify-send -a Dictation "Dictation" "Transcribing…" '
-              f'-t 8000 2>/dev/null; [ -n "$text" ] && '
+              f'-t 8000 2>/dev/null; if [ -n "$text" ]; then '
               'notify-send -a Dictation "Dictation" "Done." -t 2000 '
-              '2>/dev/null; '
-              f'[ -n "$text" ] && printf "%s" "$text" | wtype -')
+              '2>/dev/null; printf "%s" "$text" | wtype -; else '
+              'notify-send -a Dictation "Dictation" "Nothing was said." '
+              '-t 4000 2>/dev/null; fi')
     else:
         spawn(f"sh -c 'pw-record --rate 16000 --channels 1 "
               f"{DICTATION_WAV} & echo $! > {DICTATION_PID}'; "
