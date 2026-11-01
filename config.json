@@ -26,7 +26,8 @@
         "spotlight",
         "stage",
         "launchpad",
-        "phonehub"
+        "phonehub",
+        "mixer"
     ],
     "notch_actions": [],
     "mute": true,

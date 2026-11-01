@@ -131,7 +131,7 @@ class Shell:
         self.spaces = Spaces(self.metrics, self)
         self.settings = Settings(self.metrics, self)
         self.popups = {}
-        for kind in ("wifi", "bluetooth", "battery", "volume"):
+        for kind in ("wifi", "bluetooth", "battery", "volume", "mixer"):
             self.popups[kind] = StatusPopup(self.metrics, self, kind)
         self._tag = 1
         self._last_command = ""
@@ -184,7 +184,7 @@ class Shell:
         # MACSHELL_SHOW_CC=1 opens the control centre straight away, which
         # makes it possible to check its layout without a mouse
         if os.environ.get("MACSHELL_SHOW_CC"):
-            self.control_centre.show_all()
+            self.control_centre.toggle_visible()
         if os.environ.get("MACSHELL_SHOW_SPOTLIGHT"):
             self.spotlight.open()
 
@@ -281,6 +281,8 @@ class Shell:
             self.screenshot_hud.toggle()
         elif command == "record":
             state.toggle_recording()
+        elif command == "mixer":
+            self.open_popup("mixer")
         elif command.startswith("quicklook:"):
             self.quicklook.show_file(command.split(":", 1)[1], "look")
         elif command.startswith("getinfo:"):
@@ -531,7 +533,7 @@ class Shell:
         if action == "about":
             self.about.open()
         elif action == "control_centre":
-            self.control_centre.show_all()
+            self.control_centre.toggle_visible()
         elif action == "settings":
             self.open_settings()
         elif action == "force_quit":

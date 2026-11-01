@@ -35,6 +35,7 @@ UTILITIES = [
     ("dictation", "microphone"),
     ("edgelight", "sun"),
     ("phonehub", "phone"),
+    ("mixer", "sliders"),
 ]
 
 
@@ -55,6 +56,24 @@ class ControlCentre(Panel):
         self.set_content_size(int(metrics.px("cc_width")),
                               int(self._height(int(metrics.px("cc_width")))))
         self.refresh()
+
+    def toggle_visible(self):
+        """Show with a fresh size: a hidden layer surface can come back
+        at zero size if nothing re-requests its content."""
+        if self.get_visible():
+            self.hide()
+        else:
+            self.refresh()
+            self.show_all()
+            GLib.idle_add(self._after_show)
+        return self.get_visible()
+
+    def _after_show(self):
+        """Draw again once the surface is mapped: a queue_draw asked for
+        before mapping is dropped, and the panel would stay empty."""
+        self.refresh()
+        self.area.queue_draw()
+        return False
 
     def _wanted_tiles(self):
         """The tiles the user wants to see."""
@@ -167,7 +186,8 @@ class ControlCentre(Panel):
                 "y": y + row * (small + gap),
                 "w": small, "h": small,
             })
-        y += 4 * (small + gap) - gap + m.px("cc_section_gap")
+        rows = max(1, (len(utilities) + 1) // 2)
+        y += rows * (small + gap) - gap + m.px("cc_section_gap")
 
         # the power mode
         y += m.px("cc_section_gap")
@@ -567,6 +587,9 @@ class ControlCentre(Panel):
             self.shell.cycle_edge_light()
         elif region_id == "phonehub":
             state.toggle_phonehub()
+        elif region_id == "mixer":
+            # the flyout sits just left of this panel, not on top of it
+            self.shell.open_popup("mixer", self.metrics.width - 8)
         GLib.timeout_add(200, self.refresh)
 
     def _set_slider(self, region, x):

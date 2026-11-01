@@ -740,3 +740,19 @@ def record(cr, x, y, size, color, active=False):
         cr.arc(cx, cy, 4.4 * s, 0, 2 * math.pi)
         cr.fill()
     cr.restore()
+
+
+def sliders(cr, x, y, size, color):
+    """Three faders, the mixer's sign."""
+    s = _unit(cr, x, y, size)
+    cr.save()
+    cr.set_source_rgba(*color)
+    cr.set_line_width(1.4 * s)
+    cr.set_line_cap(1)  # round
+    for row, knob in ((4.6, 9.6), (8.0, 5.4), (11.4, 11.0)):
+        cr.move_to(x + 3.4 * s, y + row * s)
+        cr.line_to(x + 12.6 * s, y + row * s)
+        cr.stroke()
+        cr.arc(x + knob * s, y + row * s, 1.7 * s, 0, 2 * math.pi)
+        cr.fill()
+    cr.restore()

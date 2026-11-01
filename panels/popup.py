@@ -6,6 +6,7 @@ a small flyout underneath it, the way macOS does.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 
@@ -63,6 +64,7 @@ class StatusPopup(Panel):
         height = int(TITLE_HEIGHT * self.metrics.scale
                      + len(rows) * ROW_HEIGHT * self.metrics.scale + 20)
         self.set_content_size(width, height)
+        self._content_w = width
         if anchor_x is None:
             anchor_x = (self.metrics.width or 1366) - width - 8
         else:
@@ -91,6 +93,8 @@ class StatusPopup(Panel):
             return self._bluetooth()
         if self.kind == "battery":
             return self._battery()
+        if self.kind == "mixer":
+            return self._mixer()
         return self._volume()
 
     def _wifi(self):
@@ -201,6 +205,46 @@ class StatusPopup(Panel):
                      "active": False, "action": self.shell.open_settings})
         return "Sound", rows
 
+    def _mixer(self):
+        rows = []
+        out = _run("pactl -f json list sink-inputs")
+        try:
+            streams = json.loads(out) if out else []
+        except ValueError:
+            streams = []
+        for stream in streams:
+            index = stream.get("index")
+            if index is None:
+                continue
+            props = stream.get("properties") or {}
+            name = (props.get("application.name")
+                    or props.get("media.name")
+                    or props.get("application.process.binary")
+                    or "Unknown app")
+            volume = stream.get("volume") or {}
+            frac = 0.0
+            for channel in volume.values():
+                try:
+                    frac = max(frac, channel.get("value", 0) / 65536)
+                except (AttributeError, TypeError, ZeroDivisionError):
+                    continue
+            rows.append({
+                "glyph": "sliders",
+                "label": str(name),
+                "detail": f"{round(frac * 100)}%",
+                "active": True,
+                "slider": min(frac, 1.0),
+                "action": None,
+                "set": (lambda value, i=index: state.spawn(
+                    f"pactl set-sink-input-volume {i} {int(value * 100)}%")),
+            })
+        if not rows:
+            rows.append({"glyph": "sliders", "label": "Nothing playing",
+                         "detail": "", "active": False, "action": None})
+        rows.append({"glyph": "grid", "label": "Sound Settings…", "detail": "",
+                     "active": False, "action": self.shell.open_settings})
+        return "Mixer", rows
+
     # -- painting ------------------------------------------------------------
 
     def paint(self, cr, width, height):
@@ -223,15 +267,46 @@ class StatusPopup(Panel):
             color = pal["text"] if row.get("active") else pal["text_dim"]
             self._draw_glyph(cr, row.get("glyph", "grid"),
                              14 * m.scale, y + (row_h - glyph) / 2, glyph, color)
-            draw.draw_text(cr, 38 * m.scale, y + row_h / 2, row["label"],
-                           m.font("cc_font_size"), pal["text"], baseline="middle",
-                           max_width=width - 90 * m.scale, ellipsize=True)
+            if "slider" in row:
+                self._paint_slider(cr, row, width, y, row_h, pal)
+            else:
+                draw.draw_text(cr, 38 * m.scale, y + row_h / 2, row["label"],
+                               m.font("cc_font_size"), pal["text"],
+                               baseline="middle",
+                               max_width=width - 90 * m.scale, ellipsize=True)
             if row.get("detail"):
                 draw.draw_text(cr, width - 14 * m.scale, y + row_h / 2,
                                row["detail"], m.font("cc_font_size"),
                                pal["text_faint"], align="right", baseline="middle")
             self._geo.append((y, row_h, row))
             y += row_h
+
+    def _track(self, width):
+        """The fader runs from this x to that x inside a row."""
+        left = 132 * self.metrics.scale
+        right = width - 54 * self.metrics.scale
+        return left, right
+
+    def _paint_slider(self, cr, row, width, y, row_h, pal):
+        m = self.metrics
+        draw.draw_text(cr, 38 * m.scale, y + row_h / 2, row["label"],
+                       m.font("cc_font_size"), pal["text"], baseline="middle",
+                       max_width=self._track(width)[0] - 46 * m.scale,
+                       ellipsize=True)
+        left, right = self._track(width)
+        frac = max(0.0, min(1.0, row.get("slider", 0.0)))
+        cy = y + row_h / 2
+        bar = 5 * m.scale
+        draw.fill_squircle(cr, left, cy - bar / 2, right - left, bar,
+                           bar / 2, pal["fill_hover"], 2.0)
+        if frac > 0:
+            draw.fill_squircle(cr, left, cy - bar / 2,
+                               max(bar, (right - left) * frac), bar,
+                               bar / 2, pal["accent"], 2.0)
+        knob = 4.2 * m.scale
+        cr.set_source_rgba(*pal["accent"])
+        cr.arc(left + (right - left) * frac, cy, knob, 0, 6.2832)
+        cr.fill()
 
     def _draw_glyph(self, cr, name, x, y, size, color):
         fn = getattr(glyphs, name, None)
@@ -244,6 +319,16 @@ class StatusPopup(Panel):
     def on_click(self, x, y, button):
         for ry, rh, row in getattr(self, "_geo", []):
             if ry <= y <= ry + rh:
+                if "slider" in row and row.get("set"):
+                    left, right = self._track(
+                        getattr(self, "_content_w", 320))
+                    frac = (x - left) / max(1.0, right - left)
+                    frac = max(0.0, min(1.0, frac))
+                    row["set"](frac)
+                    row["slider"] = frac
+                    row["detail"] = f"{round(frac * 100)}%"
+                    self.redraw()
+                    return True
                 action = row.get("action")
                 if action:
                     action()
