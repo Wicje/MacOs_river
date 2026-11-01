@@ -18,6 +18,14 @@ a real voice).
   once we only take the first (phones first, then others) — a device
   chooser would be nicer, plus a send in hand to confirm the whole
   round with the owner's LocalSend running.
+* Screen recording and the mixer are wired but want the owner's mouse:
+  `Alt+Shift+S` opens the screenshot HUD, its red dot asks slurp for an
+  area and starts `tools/record.py` (wf-recorder), a second press ends
+  the take into `~/Videos`, and the notch carries a red light while it
+  runs; the Control Centre's sliders tile lists every sound-making
+  stream with a fader (pactl).  Both were verified by command line
+  (a take round-trips and the mixer reads/writes volumes) but the
+  pointer could not drive them — ydotoold cannot open uinput here.
 * The phone hub, with the owner's phone in hand: Safari keeping the
   fetch alive, one file upload through the pickers, and a duplicate
   file landing as `name (1).ext`.  (Section 5 below carries the whole
