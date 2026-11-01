@@ -13,6 +13,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 
@@ -319,17 +320,19 @@ def toggle_dnd():
 
 DICTATION_PID = "/tmp/dictation.pid"
 DICTATION_WAV = "/tmp/dictation.wav"
-_VOICE = f"{os.path.expanduser('~')}/venvs/voice/bin/python"
-_VOICE_STT = f"{os.path.expanduser('~')}/bin/_voice.py"
+_DICTATE = os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), "tools", "dictate.py")
 
 
 def dictation_active():
-    """Whether any recorder is out there taking down the dictation.
-
-    The pid file of the button names only the newest recorder, so the
-    whole machine is asked too: a click that reached us twice could
-    otherwise leave petered orphans nobody can stop again.
-    """
+    """Whether a take is out there: the watcher or its recorder."""
+    try:
+        with open(DICTATION_PID) as fh:
+            pid = int(fh.read().strip())
+        if os.path.exists(f"/proc/{pid}"):
+            return True
+    except (OSError, ValueError):
+        pass
     return bool(_dictation_pids())
 
 
@@ -351,43 +354,29 @@ def _dictation_pids():
 
 
 def toggle_dictation():
-    """Start the microphone, and stop it by typing what was said."""
+    """Start the take, or end it early -- it ends itself on silence."""
     if dictation_active():
-        # every recorder still breathing is stopped, not just the one
-        # the pid file happens to name
-        for pid in _dictation_pids():
-            try:
-                os.kill(pid, signal.SIGINT)
-            except OSError:
-                pass
+        # the watcher knows how to stop its recorder and transcribe;
+        # if it is gone, the recorder is put out directly
+        watcher = None
         try:
             with open(DICTATION_PID) as fh:
-                pid = int(fh.read().strip())
-            os.kill(pid, signal.SIGINT)
+                watcher = int(fh.read().strip())
         except (OSError, ValueError):
             pass
-        spawn(f'sh -c text=$("{_VOICE}" "{_VOICE_STT}" stt "{DICTATION_WAV}" '
-              '--language en --model base 2>/dev/null); '
-              'notify-send -a Dictation "Dictation" "Transcribing…" '
-              f'-t 8000 2>/dev/null; if [ -n "$text" ]; then '
-              'notify-send -a Dictation "Dictation" "Done." -t 2000 '
-              '2>/dev/null; printf "%s" "$text" | wtype -; else '
-              'notify-send -a Dictation "Dictation" "Nothing was said." '
-              '-t 4000 2>/dev/null; fi')
+        if watcher and os.path.exists(f"/proc/{watcher}"):
+            try:
+                os.kill(watcher, signal.SIGINT)
+            except OSError:
+                pass
+        else:
+            for pid in _dictation_pids():
+                try:
+                    os.kill(pid, signal.SIGINT)
+                except OSError:
+                    pass
     else:
-        # WirePlumber loves to hand the capture mixer back its old
-        # +30 dB, and a rail-clipped take is a take no whisper can
-        # read: the hardware gain is brought down to a sane place
-        # before the recorder opens, without touching a quiet mix.
-        spawn(f"sh -c '"
-              f"v=$(amixer -c0 sget Capture 2>/dev/null | "
-              f"sed -n \"s/.*Front Left: Capture \\([0-9]*\\).*/\\1/p\"); "
-              f"[ \"${{v:-0}}\" -gt 35 ] && amixer -c0 sset Capture 25 "
-              f">/dev/null 2>&1; "
-              f"pw-record --rate 16000 --channels 1 "
-              f"{DICTATION_WAV} & echo $! > {DICTATION_PID}'; "
-              "sleep 1; notify-send -a Dictation 'Dictation' "
-               "'Recording — speak now, click again to stop' -t 4000")
+        spawn(f'"{sys.executable}" "{_DICTATE}"')
 
 
 # --- the phone hub ---------------------------------------------------------

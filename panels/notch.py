@@ -1010,6 +1010,7 @@ class Notch(Panel):
         y = height - 42 * scale
         time_text = time.strftime("%H:%M", now)
         time_size = m.font("notch_font_size") * 1.55
+        time_w = draw.text_width(cr, time_text, time_size)
         draw.draw_text(cr, right, y, time_text, time_size, pal["text"],
                        weight="bold", align="right", baseline="middle")
         detail = time.strftime("%a %-d %b", now)
