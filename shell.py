@@ -279,6 +279,8 @@ class Shell:
             self.assistant.open("screen")
         elif command == "screenshot:hud":
             self.screenshot_hud.toggle()
+        elif command == "record":
+            state.toggle_recording()
         elif command.startswith("quicklook:"):
             self.quicklook.show_file(command.split(":", 1)[1], "look")
         elif command.startswith("getinfo:"):

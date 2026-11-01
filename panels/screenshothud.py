@@ -14,7 +14,7 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 
-from ..macui import draw, glyphs  # noqa: E402
+from ..macui import draw, glyphs, state  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
 SCRIPT = os.path.expanduser("~/.config/river/screenshot.sh")
@@ -23,6 +23,7 @@ BUTTONS = [
     ("region", "camera", "Capture area"),
     ("window", "display", "Capture window"),
     ("full", "display", "Capture screen"),
+    ("record", "record", "Record screen"),
     ("timer5", "chevron_down", "Timer 5 seconds"),
     ("timer10", "chevron_down", "Timer 10 seconds"),
 ]
@@ -88,10 +89,15 @@ class ScreenshotHUD(Panel):
             cr.fill()
             cr.restore()
             icon = 17 * scale
-            fn = getattr(glyphs, glyph, None)
-            if fn is not None:
-                fn(cr, bx + (size - icon) / 2, y + (size - icon) / 2, icon,
-                   pal["text"])
+            if glyph == "record":
+                glyphs.record(cr, bx + (size - icon) / 2,
+                              y + (size - icon) / 2, icon, pal["text"],
+                              active=state.screen_recording())
+            else:
+                fn = getattr(glyphs, glyph, None)
+                if fn is not None:
+                    fn(cr, bx + (size - icon) / 2, y + (size - icon) / 2,
+                       icon, pal["text"])
             self._buttons.append((action, bx, y, size, label))
 
     # -- input ---------------------------------------------------------------
@@ -109,6 +115,11 @@ class ScreenshotHUD(Panel):
         return True
 
     def _run(self, action):
+        if action == "record":
+            subprocess.Popen([state.RECORD_TOOL], start_new_session=True,
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            return
         if action.startswith("timer"):
             seconds = action.replace("timer", "")
             subprocess.Popen([SCRIPT, "region", "--delay", seconds],

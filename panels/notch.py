@@ -152,6 +152,7 @@ class Notch(Panel):
         # program records, a green one while a camera streams
         self._mic = state.mic_active()
         self._camera = state.camera_active()
+        self._recording = state.screen_recording()
         # the island: whatever is happening, strongest activity first
         self._activities = state.activities()
         self._flash = [row for row in self._activities
@@ -1034,6 +1035,8 @@ class Notch(Panel):
             lights.append((0.21, 0.47, 0.91))
         if getattr(self, "_mic", False):
             lights.append((1.00, 0.58, 0.00))
+        if getattr(self, "_recording", False):
+            lights.append((1.00, 0.27, 0.25))
         if lights:
             dot = 8 * scale
             dot_x = right - time_w - 24 * scale

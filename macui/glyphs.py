@@ -723,3 +723,20 @@ def star(cr, x, y, size, color):
     cr.close_path()
     cr.fill()
     cr.restore()
+
+
+def record(cr, x, y, size, color, active=False):
+    """The record dot, and the stop square while a take runs."""
+    s = _unit(cr, x, y, size)
+    cx, cy = x + 8 * s, y + 8 * s
+    cr.save()
+    if active:
+        side = 7.4 * s
+        cr.set_source_rgba(1.0, 0.27, 0.25, 1.0)
+        cr.rectangle(cx - side / 2, cy - side / 2, side, side)
+        cr.fill()
+    else:
+        cr.set_source_rgba(1.0, 0.27, 0.25, 1.0)
+        cr.arc(cx, cy, 4.4 * s, 0, 2 * math.pi)
+        cr.fill()
+    cr.restore()

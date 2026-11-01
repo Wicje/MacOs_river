@@ -379,6 +379,28 @@ def toggle_dictation():
         spawn(f'"{sys.executable}" "{_DICTATE}"')
 
 
+# --- screen recording -------------------------------------------------------
+
+RECORD_PID = "/tmp/macshell-record.pid"
+RECORD_TOOL = os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), "tools", "record.py")
+
+
+def screen_recording():
+    """Whether wf-recorder is out there taking the screen."""
+    try:
+        with open(RECORD_PID) as fh:
+            pid = int(fh.read().strip())
+    except (OSError, ValueError):
+        return False
+    return os.path.exists(f"/proc/{pid}")
+
+
+def toggle_recording():
+    """Start a take, or end the running one, on the recorder tool."""
+    spawn(f'"{sys.executable}" "{RECORD_TOOL}"')
+
+
 # --- the phone hub ---------------------------------------------------------
 
 PHONEHUB_PID = "/tmp/phonehub.pid"
