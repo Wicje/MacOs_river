@@ -375,7 +375,16 @@ def toggle_dictation():
               'notify-send -a Dictation "Dictation" "Nothing was said." '
               '-t 4000 2>/dev/null; fi')
     else:
-        spawn(f"sh -c 'pw-record --rate 16000 --channels 1 "
+        # WirePlumber loves to hand the capture mixer back its old
+        # +30 dB, and a rail-clipped take is a take no whisper can
+        # read: the hardware gain is brought down to a sane place
+        # before the recorder opens, without touching a quiet mix.
+        spawn(f"sh -c '"
+              f"v=$(amixer -c0 sget Capture 2>/dev/null | "
+              f"sed -n \"s/.*Front Left: Capture \\([0-9]*\\).*/\\1/p\"); "
+              f"[ \"${{v:-0}}\" -gt 35 ] && amixer -c0 sset Capture 25 "
+              f">/dev/null 2>&1; "
+              f"pw-record --rate 16000 --channels 1 "
               f"{DICTATION_WAV} & echo $! > {DICTATION_PID}'; "
               "sleep 1; notify-send -a Dictation 'Dictation' "
                "'Recording — speak now, click again to stop' -t 4000")
