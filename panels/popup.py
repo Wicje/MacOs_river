@@ -205,8 +205,46 @@ class StatusPopup(Panel):
                      "active": False, "action": self.shell.open_settings})
         return "Sound", rows
 
-    def _mixer(self):
+    def _sound_devices(self):
+        """The sinks and sources, the default one marked, plus the switch."""
         rows = []
+        try:
+            sinks = json.loads(_run("pactl -f json list sinks") or "[]")
+            sources = json.loads(_run("pactl -f json list sources") or "[]")
+            default_sink = _run("pactl get-default-sink")
+            default_source = _run("pactl get-default-source")
+        except ValueError:
+            return rows
+        for sink in sinks:
+            name = sink.get("name") or ""
+            if not name or name.endswith(".monitor"):
+                continue
+            label = sink.get("description") or name
+            rows.append({
+                "glyph": "speaker",
+                "label": label,
+                "detail": "Output" + (" ✓" if name == default_sink else ""),
+                "active": name == default_sink,
+                "action": (lambda n=name: state.spawn(
+                    f"pactl set-default-sink {n}")),
+            })
+        for source in sources:
+            name = source.get("name") or ""
+            if not name or name.endswith(".monitor"):
+                continue
+            label = source.get("description") or name
+            rows.append({
+                "glyph": "microphone",
+                "label": label,
+                "detail": "Input" + (" ✓" if name == default_source else ""),
+                "active": name == default_source,
+                "action": (lambda n=name: state.spawn(
+                    f"pactl set-default-source {n}")),
+            })
+        return rows
+
+    def _mixer(self):
+        rows = self._sound_devices()
         out = _run("pactl -f json list sink-inputs")
         try:
             streams = json.loads(out) if out else []

@@ -95,6 +95,15 @@ def stop():
             pass
     if path and os.path.exists(path):
         _notify("Screen recording", f"Saved {path}", 6000)
+        preview = os.path.expanduser("~/.config/river/shotpreview.py")
+        if os.path.exists(preview):
+            try:
+                subprocess.Popen([sys.executable, preview, path],
+                                 start_new_session=True,
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+            except OSError:
+                pass
     else:
         _notify("Screen recording", "The take did not save.")
     return 0
