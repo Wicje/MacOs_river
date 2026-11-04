@@ -64,6 +64,10 @@ class ControlCentre(Panel):
             self.hide()
         else:
             self.refresh()
+            width = int(self.metrics.px("cc_width"))
+            height = int(self._layout(width))
+            self.set_default_size(width, height)
+            self.resize(width, height)
             self.show_all()
             GLib.idle_add(self._after_show)
         return self.get_visible()

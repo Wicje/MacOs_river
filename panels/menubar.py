@@ -82,6 +82,31 @@ class MenuBar(Panel):
         elif not pulsing and self._pulse_id:
             GLib.source_remove(self._pulse_id)
             self._pulse_id = None
+        # repaint only when something on the bar changed: a full-width
+        # surface drawn every second for an unchanged picture is a
+        # battery bill with nothing on it
+        hover = (time.monotonic()
+                 - getattr(self, "_wifi_hover_at", 0.0)) < 2.5
+        signature = (
+            self._app_name,
+            self._app_id,
+            (self._media or ())[:3],
+            self._battery,
+            self._charging,
+            time.strftime("%a %-d %b  %H:%M"),
+            tuple((st.get("id"), st.get("text"), st.get("icon"),
+                   st.get("pulse"), st.get("active"))
+                  for st in self._status_items_cache),
+            hover,
+        )
+        if hover:
+            # the hover readout shows the live speeds: it needs the ticks
+            self._signature = signature
+            self.redraw()
+            return
+        if signature == getattr(self, "_signature", None):
+            return
+        self._signature = signature
         self.redraw()
 
     # -- painting ------------------------------------------------------------

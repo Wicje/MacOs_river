@@ -83,15 +83,48 @@ def _run_json(cmd):
 # --- network ---------------------------------------------------------------
 
 def wifi_enabled():
+    """Whether the Wi-Fi radio is on, from rfkill — no command runs.
+
+    The menu bar asks this on every paint, so an nmcli fork per frame
+    was the shell's favourite way to drain the battery.
+    """
+    found = False
+    try:
+        for entry in glob.glob("/sys/class/rfkill/*"):
+            try:
+                with open(os.path.join(entry, "type")) as fh:
+                    if fh.read().strip() != "wlan":
+                        continue
+                found = True
+                with open(os.path.join(entry, "state")) as fh:
+                    if fh.read().strip() == "1":
+                        return True
+            except OSError:
+                continue
+    except OSError:
+        pass
+    if found:
+        return False
     return run("nmcli -t -f WIFI general") == "enabled"
 
 
-def wifi_ssid():
+_SSID_CACHE = {"at": 0.0, "value": ""}
+
+
+def refresh_wifi_ssid():
+    """Ask nmcli once, for the background thread to call."""
     out = run("nmcli -t -f ACTIVE,SSID device wifi")
+    value = ""
     for line in out.splitlines():
         if line.startswith("yes:"):
-            return line.split(":", 1)[1]
-    return ""
+            value = line.split(":", 1)[1]
+            break
+    _SSID_CACHE["value"] = value
+
+
+def wifi_ssid():
+    """The network in use, from the cache — no fork in a paint."""
+    return _SSID_CACHE["value"]
 
 
 _WIFI_STRENGTH = {"at": 0.0, "value": 0}
@@ -164,12 +197,47 @@ def toggle_wifi():
 
 # --- bluetooth -------------------------------------------------------------
 
+_BT_CACHE = {"at": 0.0, "value": False}
+
+
 def bluetooth_on():
-    return "Powered: yes" in run("bluetoothctl show")
+    """Whether the Bluetooth radio is on, from rfkill — no fork.
+
+    bluetoothctl show can take seconds when the daemon is waking; the
+    Control Centre paints this on every frame.
+    """
+    now = time.monotonic()
+    if now - _BT_CACHE["at"] < 3.0:
+        return _BT_CACHE["value"]
+    _BT_CACHE["at"] = now
+    value = False
+    found = False
+    try:
+        for entry in glob.glob("/sys/class/rfkill/*"):
+            try:
+                with open(os.path.join(entry, "type")) as fh:
+                    if fh.read().strip() != "bluetooth":
+                        continue
+                found = True
+                with open(os.path.join(entry, "state")) as fh:
+                    if fh.read().strip() == "1":
+                        value = True
+                        break
+            except OSError:
+                continue
+    except OSError:
+        pass
+    if not found:
+        value = "Powered: yes" in run("bluetoothctl show")
+    _BT_CACHE["value"] = value
+    return value
 
 
 def toggle_bluetooth():
-    spawn("bluetoothctl power " + ("off" if bluetooth_on() else "on"))
+    turn_on = not bluetooth_on()
+    _BT_CACHE["value"] = turn_on
+    _BT_CACHE["at"] = time.monotonic()
+    spawn("bluetoothctl power " + ("on" if turn_on else "off"))
 
 
 # --- night light -----------------------------------------------------------
@@ -199,39 +267,68 @@ def toggle_nightlight():
 
 # --- audio -----------------------------------------------------------------
 
-def volume():
-    out = run("wpctl get-volume @DEFAULT_AUDIO_SINK@")
+_VOLUME_CACHE = {"value": 0, "muted": False}
+
+
+def _parse_volume(out):
+    value = None
     for token in out.split():
         try:
-            return int(round(float(token) * 100))
+            value = int(round(float(token) * 100))
         except ValueError:
             continue
-    return 0
+    return value
+
+
+def refresh_volume():
+    """Ask wpctl once, for the background thread to call."""
+    out = run("wpctl get-volume @DEFAULT_AUDIO_SINK@")
+    value = _parse_volume(out)
+    if value is not None:
+        _VOLUME_CACHE["value"] = value
+    _VOLUME_CACHE["muted"] = "MUTED" in out.upper()
+
+
+def volume():
+    """The sink volume, from the cache — no fork in a paint."""
+    return _VOLUME_CACHE["value"]
 
 
 def set_volume(value):
+    _VOLUME_CACHE["value"] = int(value)
     spawn(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {int(value)}%")
 
 
 def muted():
-    return "MUTED" in run("wpctl get-volume @DEFAULT_AUDIO_SINK@").upper()
+    return _VOLUME_CACHE["muted"]
 
 
 def toggle_mute():
+    _VOLUME_CACHE["muted"] = not _VOLUME_CACHE["muted"]
     spawn("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle")
 
 
 # --- brightness ------------------------------------------------------------
 
-def brightness():
+_BRIGHT_CACHE = {"value": 0}
+
+
+def refresh_brightness():
+    """Ask brightnessctl once, for the background thread to call."""
     cur, mx = run("brightnessctl get"), run("brightnessctl max")
     try:
-        return int(round(int(cur) / int(mx) * 100))
+        _BRIGHT_CACHE["value"] = int(round(int(cur) / int(mx) * 100))
     except (ValueError, ZeroDivisionError):
-        return 0
+        pass
+
+
+def brightness():
+    """The panel brightness, from the cache — no fork in a paint."""
+    return _BRIGHT_CACHE["value"]
 
 
 def set_brightness(value):
+    _BRIGHT_CACHE["value"] = int(value)
     spawn(f"brightnessctl set {int(value)}%")
 
 
@@ -241,20 +338,36 @@ def dnd_on():
     return dnd_mode() == "do-not-disturb"
 
 
+_POWER_CACHE = {"at": 0.0, "value": "balanced"}
+
+
 def power_mode():
-    """The power profile the machine is running in."""
+    """The power profile the machine is running in.
+
+    Cached for ten seconds: the menu bar paints the profile glyph on
+    every frame and powerprofilesctl is a fork each time.
+    """
+    return _POWER_CACHE["value"]
+
+
+def refresh_power_mode():
+    """Ask the profile once, for the background thread to call."""
     out = run("powerprofilesctl get")
     if "performance" in out:
-        return "performance"
-    if "power-saver" in out:
-        return "power-saver"
-    return "balanced"
+        _POWER_CACHE["value"] = "performance"
+    elif "power-saver" in out:
+        _POWER_CACHE["value"] = "power-saver"
+    else:
+        _POWER_CACHE["value"] = "balanced"
+    _POWER_CACHE["at"] = time.monotonic()
 
 
 def set_power_mode(mode):
     """Switch the power profile; the menu bar shows the one it sits in."""
     if mode not in ("performance", "balanced", "power-saver"):
         return
+    _POWER_CACHE["value"] = mode
+    _POWER_CACHE["at"] = time.monotonic()
     spawn(f"powerprofilesctl set {mode}")
 
 
@@ -277,13 +390,24 @@ def battery_charging():
         return False
 
 
+_DND_CACHE = {"at": 0.0, "value": "off"}
+
+
 def dnd_mode():
-    """The focus mode mako is in."""
+    """The focus mode mako is in, asked at most every three seconds."""
+    return _DND_CACHE["value"]
+
+
+def refresh_dnd_mode():
+    """Ask mako once, for the background thread to call."""
     out = run("makoctl mode")
+    value = "off"
     for mode in ("do-not-disturb", "work", "personal", "sleep"):
         if mode in out:
-            return mode
-    return "off"
+            value = mode
+            break
+    _DND_CACHE["value"] = value
+    _DND_CACHE["at"] = time.monotonic()
 
 
 def set_dnd_mode(mode):
@@ -306,6 +430,8 @@ def set_dnd_mode(mode):
             os.unlink(FOCUS_FILE)
         except OSError:
             pass
+    _DND_CACHE["value"] = mode if mode and mode != "off" else "off"
+    _DND_CACHE["at"] = time.monotonic()
     if mode and mode != "off":
         spawn(f"makoctl mode -s {mode}")
     else:
@@ -313,6 +439,8 @@ def set_dnd_mode(mode):
 
 
 def toggle_dnd():
+    _DND_CACHE["value"] = ("off" if dnd_on() else "do-not-disturb")
+    _DND_CACHE["at"] = time.monotonic()
     spawn("makoctl mode -t do-not-disturb")
 
 
@@ -553,18 +681,30 @@ def toggle_theme():
 
 # --- media -----------------------------------------------------------------
 
+MEDIA_FORMAT = ("{{status}}\t{{xesam:title}}\t{{xesam:artist}}\t"
+                "{{position}}\t{{mpris:length}}\t{{mpris:artUrl}}")
+
+
 def _read_media():
-    """Ask playerctl what is playing (slow, runs in the background)."""
-    if not run("playerctl status"):
+    """What is playing, in a single playerctl call.
+
+    This used to be seven calls a second (status, title, artist, status
+    again, position, length, art), every one of them a fork.
+    """
+    try:
+        out = subprocess.run(["playerctl", "metadata", "--format",
+                              MEDIA_FORMAT], capture_output=True, text=True,
+                             timeout=3).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
         return None
-    title = run("playerctl metadata xesam:title")
+    if not out:
+        return None
+    parts = out.split("\t")
+    while len(parts) < 6:
+        parts.append("")
+    status, title, artist, pos, length, art = parts[:6]
     if not title:
         return None
-    artist = run("playerctl metadata xesam:artist")
-    status = run("playerctl status")
-    pos = run("playerctl position")
-    length = run("playerctl metadata mpris:length")
-    art = run("playerctl metadata mpris:artUrl")
     try:
         position = float(pos)
     except ValueError:
@@ -828,8 +968,12 @@ def clipboard():
 
 
 def _refresh_once():
-    media = _read_media()
-    clip = _read_clipboard()
+    """The once-a-second part of the cache: the focused window.
+
+    The media, the clipboard and the weather run on their own slower
+    clocks in _refresh_loop — asking playerctl and cliphist every second
+    was most of the shell's idle CPU.
+    """
     entries = _toplevels()
     app_id = ""
     title = ""
@@ -843,19 +987,34 @@ def _refresh_once():
             title = entry.get("title") or ""
     _track_screen_time(app_id)
     _track_recent(app_id)
-    weather = _fetch_weather()
     with _cache_lock:
-        if clip is not None:
-            _cache["clipboard"] = clip
-            _cache["clip_id"] = clip["id"]
-        if weather:
-            _cache["weather"] = weather
-            _cache["weather_full"] = _read_weather_json()
-        _cache["media"] = media
         _cache["app_id"] = app_id
         _cache["window"] = title
         _cache["running"] = running
         _cache["toplevels"] = entries
+
+
+def _refresh_media():
+    media = _read_media()
+    with _cache_lock:
+        _cache["media"] = media
+    return media
+
+
+def _refresh_clipboard():
+    clip = _read_clipboard()
+    if clip is not None:
+        with _cache_lock:
+            _cache["clipboard"] = clip
+            _cache["clip_id"] = clip["id"]
+
+
+def _refresh_weather():
+    weather = _fetch_weather()
+    if weather:
+        with _cache_lock:
+            _cache["weather"] = weather
+            _cache["weather_full"] = _read_weather_json()
 
 
 # --- screen time ------------------------------------------------------------
@@ -1031,18 +1190,28 @@ def mic_active():
     return active
 
 
+_CAMERA_CACHE = {"at": 0.0, "value": False}
+
+
 def camera_active():
     """True when a program holds a camera.
 
     A camera nobody holds answers reads; one that a program is
     streaming from is owned by that program, and fuser sees the name.
+    The answer is kept for five seconds: the notch asks on every
+    refresh and fuser is a fork.
     """
+    now = time.monotonic()
+    if now - _CAMERA_CACHE["at"] < 5.0:
+        return _CAMERA_CACHE["value"]
+    _CAMERA_CACHE["at"] = now
     try:
         out = subprocess.run(["fuser", "/dev/video0"],
                              capture_output=True, text=True, timeout=3)
-        return bool(out.stdout.strip())
+        _CAMERA_CACHE["value"] = bool(out.stdout.strip())
     except (OSError, subprocess.SubprocessError):
-        return False
+        _CAMERA_CACHE["value"] = False
+    return _CAMERA_CACHE["value"]
 
 
 # --- the island: activities -------------------------------------------------
@@ -1107,9 +1276,47 @@ def screen_time():
 
 
 def _refresh_loop():
+    """Keep the cache fresh, each thing on the clock it needs.
+
+    The focused window changes with every click and is read every
+    second; the media only matters every second while it plays (and
+    every five when it does not), the clipboard every two seconds, the
+    weather every minute.
+    """
+    last_media = last_clip = last_weather = 0.0
+    last_power = last_dnd = last_ssid = 0.0
+    last_volume = last_bright = 0.0
+    media_every = 1.0
     while True:
+        now = time.monotonic()
         try:
             _refresh_once()
+            if now - last_media >= media_every:
+                last_media = now
+                media = _refresh_media()
+                media_every = (1.0 if media and media[2] == "Playing"
+                               else 5.0)
+            if now - last_clip >= 2.0:
+                last_clip = now
+                _refresh_clipboard()
+            if now - last_weather >= 60.0:
+                last_weather = now
+                _refresh_weather()
+            if now - last_power >= 10.0:
+                last_power = now
+                refresh_power_mode()
+            if now - last_dnd >= 3.0:
+                last_dnd = now
+                refresh_dnd_mode()
+            if now - last_ssid >= 5.0:
+                last_ssid = now
+                refresh_wifi_ssid()
+            if now - last_volume >= 2.0:
+                last_volume = now
+                refresh_volume()
+            if now - last_bright >= 5.0:
+                last_bright = now
+                refresh_brightness()
         except Exception:  # noqa: BLE001
             pass
         time.sleep(1.0)
@@ -1127,15 +1334,23 @@ def start_refresher():
 FOCUS_FILE = "/tmp/macshell-focus-start"
 
 
+_DEV_CACHE = {}
+
+
 def dev_project(path):
     """The state of the project's git, for the dev widget.
 
     (branch, dirty count, and how long ago the last commit was made) —
     the whole thing fails quietly, so a folder that is not a repository
-    shows an honest empty row.
+    shows an honest empty row.  Three git forks are too much to pay
+    every two seconds, so the answer is kept for twenty.
     """
     if not path:
         return "", 0, 0.0
+    now = time.monotonic()
+    cached = _DEV_CACHE.get(path)
+    if cached and now - cached[0] < 20.0:
+        return cached[1]
     try:
         out = subprocess.run(
             ["git", "-C", path, "branch", "--show-current"],
@@ -1151,7 +1366,9 @@ def dev_project(path):
             capture_output=True, text=True, timeout=3)
         stamp = float(out.stdout.strip() or 0)
         age = max(0.0, time.time() - stamp) if stamp else 0.0
-        return branch, dirty, age
+        value = (branch, dirty, age)
+        _DEV_CACHE[path] = (now, value)
+        return value
     except (OSError, subprocess.SubprocessError, ValueError):
         return "", 0, 0.0
 

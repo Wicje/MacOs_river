@@ -161,8 +161,31 @@ class Notch(Panel):
                                if row["priority"] in ("critical", "high",
                                                       "normal", "low")),
                               None)
-        self._ensure_eq_loop()
-        self._ensure_timer_loop()
+        # the card is out of sight when the pointer is not at the top:
+        # nothing it draws can be seen, so it draws nothing (the slide
+        # animation queues its own frames while it moves)
+        hidden = (self._offset >= self._slide_distance - 0.5
+                  and getattr(self, "_slide_source", None) is None)
+        self._ensure_eq_loop(hidden)
+        self._ensure_timer_loop(hidden)
+        if hidden:
+            return
+        signature = (
+            (self._media or ())[:3],
+            round((self._media or (0, 0, 0, 0, 0, 0))[3], 1),
+            (self._clip or {}).get("id"),
+            self._dnd,
+            self._battery,
+            self._charging,
+            self._mic,
+            self._camera,
+            self._recording,
+            repr(self._activities),
+            getattr(self, "_shelf_shown", False),
+        )
+        if signature == getattr(self, "_signature", None):
+            return
+        self._signature = signature
         self.redraw()
 
     def _load_art(self):
@@ -416,10 +439,10 @@ class Notch(Panel):
         self.area.queue_draw()
         return True
 
-    def _ensure_eq_loop(self):
+    def _ensure_eq_loop(self, hidden=False):
         source = getattr(self, "_eq_source", None)
         playing = bool(self._media) and \
-            (self._media[2] or "").lower() == "playing"
+            (self._media[2] or "").lower() == "playing" and not hidden
         if playing and source is None:
             self._eq_source = GLib.timeout_add(90, self._eq_tick)
         elif not playing and source is not None:
@@ -457,9 +480,9 @@ class Notch(Panel):
         self.area.queue_draw()
         return True
 
-    def _ensure_timer_loop(self):
+    def _ensure_timer_loop(self, hidden=False):
         source = self._timer_source
-        if self._timer["running"]:
+        if self._timer["running"] and not hidden:
             if source is None:
                 self._timer_source = GLib.timeout_add(500, self._timer_tick)
         elif source is not None:

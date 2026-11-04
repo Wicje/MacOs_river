@@ -257,16 +257,28 @@ class Metrics:
 
     def __init__(self, config=None):
         self.config = config or load_config()
+        try:
+            self._config_stamp = os.path.getmtime(CONFIG_FILE)
+        except OSError:
+            self._config_stamp = None
         self.width, self.height, self.output_scale = detect_output()
         self.scale = self._resolve_scale()
 
     def reload(self):
-        """Re-read config.json.
+        """Re-read config.json when it actually changed on disk.
 
         Returns True when something that affects the drawing changed, so the
-        caller can repaint.  The shell calls this once a second, which is
-        what makes the light/dark switch instant.
+        caller can repaint.  The shell calls this once a second, but the
+        JSON is only parsed when the file's mtime moved — the old version
+        parsed it every second for nothing.
         """
+        try:
+            stamp = os.path.getmtime(CONFIG_FILE)
+        except OSError:
+            return False
+        if stamp == getattr(self, "_config_stamp", None):
+            return False
+        self._config_stamp = stamp
         before = (self.config.get("theme"), self.config.get("scale_mode"),
                   self.config.get("scale"), self.config.get("squareness"))
         self.config = load_config()
