@@ -151,6 +151,16 @@ and over and systemd put it into the start limit.  What was wrong:
 
 ## 4. Smaller things
 
+* The lazy-loading of the rare panels was measured and not kept,
+  2026-11-06: building Settings, Launchpad, Mission Control, the
+  notification centre, About and Force Quit only when first opened gave
+  119.9 MB idle against 120.1 MB with all of them built at startup —
+  within noise, so the deferred construction bought nothing and the
+  panels stay eager (simpler and already proven).  The ~120 MB is the
+  GTK/Python floor and the icon caches, not the windows.  Idle sits at
+  ~2 % of a core after the cache work; the short spikes seen while
+  measuring were bwrap/glycin thumbnail loaders at startup and another
+  session compiling on the same machine, not the shell's timers.
 * Spotlight does the arithmetic and the measures, 2026-11-06: typing
   `2*(3+4)` answers 14 as the first row and copying it puts the answer
   on the clipboard; `10 km to mi`, `100 f to c`, `3 tbsp to ml`,
