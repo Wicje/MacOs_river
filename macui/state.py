@@ -510,6 +510,7 @@ def toggle_dictation():
 # --- screen recording -------------------------------------------------------
 
 RECORD_PID = "/tmp/macshell-record.pid"
+RECORD_START = "/tmp/macshell-record.start"
 RECORD_TOOL = os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "tools", "record.py")
 
@@ -522,6 +523,18 @@ def screen_recording():
     except (OSError, ValueError):
         return False
     return os.path.exists(f"/proc/{pid}")
+
+
+def recording_elapsed():
+    """How long the take has run, in seconds, or None when none runs."""
+    if not screen_recording():
+        return None
+    try:
+        with open(RECORD_START) as fh:
+            started = float(fh.read().strip())
+    except (OSError, ValueError):
+        return None
+    return max(0.0, time.time() - started)
 
 
 def toggle_recording():

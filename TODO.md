@@ -26,6 +26,10 @@ a real voice).
   stream with a fader (pactl).  Both were verified by command line
   (a take round-trips and the mixer reads/writes volumes) but the
   pointer could not drive them — ydotoold cannot open uinput here.
+  The red light now carries its elapsed time too (0:32, then 1:05…),
+  written as a start stamp by the recorder and ticked every second by
+  the notch; simulated with a fake pid/stamp while the card was up, the
+  clock was seen counting 2:01, 2:02.
 * The phone hub, with the owner's phone in hand: Safari keeping the
   fetch alive, one file upload through the pickers, and a duplicate
   file landing as `name (1).ext`.  (Section 5 below carries the whole

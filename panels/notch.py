@@ -102,6 +102,7 @@ class Notch(Panel):
         self._activity = None
         self._eq_source = None
         self._timer_source = None
+        self._record_source = None
         self._timer = {"total": 1500.0, "left": 1500.0, "running": False,
                        "till": 0.0}
         # the shelf: uri-lists dropped on the card park here, and stay
@@ -153,6 +154,7 @@ class Notch(Panel):
         self._mic = state.mic_active()
         self._camera = state.camera_active()
         self._recording = state.screen_recording()
+        self._record_elapsed = state.recording_elapsed()
         # the island: whatever is happening, strongest activity first
         self._activities = state.activities()
         self._flash = [row for row in self._activities
@@ -168,6 +170,7 @@ class Notch(Panel):
                   and getattr(self, "_slide_source", None) is None)
         self._ensure_eq_loop(hidden)
         self._ensure_timer_loop(hidden)
+        self._ensure_record_loop(hidden)
         if hidden:
             return
         signature = (
@@ -180,6 +183,8 @@ class Notch(Panel):
             self._mic,
             self._camera,
             self._recording,
+            None if self._record_elapsed is None
+            else int(self._record_elapsed),
             repr(self._activities),
             getattr(self, "_shelf_shown", False),
         )
@@ -489,6 +494,28 @@ class Notch(Panel):
             GLib.source_remove(source)
             self._timer_source = None
             self.area.queue_draw()
+
+    def _record_tick(self):
+        """Breathes the elapsed take beside the red light."""
+        self._record_elapsed = state.recording_elapsed()
+        if self._record_elapsed is None:
+            self._recording = False
+            self._record_source = None
+            self._signature = None
+            self.area.queue_draw()
+            return False
+        self._signature = None
+        self.area.queue_draw()
+        return True
+
+    def _ensure_record_loop(self, hidden=False):
+        source = self._record_source
+        if self._recording and not hidden:
+            if source is None:
+                self._record_source = GLib.timeout_add(1000, self._record_tick)
+        elif source is not None:
+            GLib.source_remove(source)
+            self._record_source = None
 
     def _toggle_timer(self):
         """Click: start; click again: pause; a parked pause can reset."""
@@ -1063,6 +1090,18 @@ class Notch(Panel):
         if lights:
             dot = 8 * scale
             dot_x = right - time_w - 24 * scale
+            if getattr(self, "_recording", False) and \
+                    self._record_elapsed is not None:
+                total = int(self._record_elapsed)
+                hours, rest = divmod(total, 3600)
+                minutes, seconds = divmod(rest, 60)
+                stamp = (f"{hours}:{minutes:02d}:{seconds:02d}" if hours
+                         else f"{minutes}:{seconds:02d}")
+                stamp_size = m.font("notch_font_size") * 0.95
+                stamp_x = dot_x - len(lights) * (dot + 6 * scale)
+                draw.draw_text(cr, stamp_x, y, stamp, stamp_size,
+                               pal["text_dim"], align="right",
+                               baseline="middle")
             for color in lights:
                 draw.fill_squircle(cr, dot_x, y - dot / 2, dot, dot,
                                    dot / 2, color, 2.0)

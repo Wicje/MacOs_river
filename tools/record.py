@@ -18,6 +18,7 @@ import time
 PID_FILE = "/tmp/macshell-record.pid"
 LOCK_FILE = "/tmp/macshell-record.lock"
 PATH_FILE = "/tmp/macshell-record.path"
+START_FILE = "/tmp/macshell-record.start"
 VIDEOS = os.path.expanduser("~/Videos")
 
 
@@ -65,6 +66,8 @@ def start():
         fh.write(str(proc.pid))
     with open(PATH_FILE, "w") as fh:
         fh.write(path)
+    with open(START_FILE, "w") as fh:
+        fh.write(f"{time.time():.3f}")
     _notify("Screen recording",
             "Recording the area — press again to stop.", 4000)
     return 0
@@ -88,7 +91,7 @@ def stop():
             if not os.path.exists(f"/proc/{pid}"):
                 break
             time.sleep(0.1)
-    for name in (PID_FILE, PATH_FILE):
+    for name in (PID_FILE, PATH_FILE, START_FILE):
         try:
             os.unlink(name)
         except OSError:
