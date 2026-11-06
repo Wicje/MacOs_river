@@ -151,6 +151,17 @@ and over and systemd put it into the start limit.  What was wrong:
 
 ## 4. Smaller things
 
+* Spotlight does the arithmetic and the measures, 2026-11-06: typing
+  `2*(3+4)` answers 14 as the first row and copying it puts the answer
+  on the clipboard; `10 km to mi`, `100 f to c`, `3 tbsp to ml`,
+  `70 mph to km/h`, `1 gb to mib`, `2 hours in minutes` turn into their
+  other unit from a local table (length, mass, volume, speed, data,
+  time, temperature), so no program is asked and the row appears with
+  the next keystroke.  The safe-eval table only lets `+ - * / // % **`
+  through.  Two duplicate copies of `_projects`/`_clipboard_rows` were
+  found while wiring it — the second `_clipboard_rows` called an
+  undefined `run`, so typing "clipboard" would have raised; removed, and
+  the clipboard rows were re-tested against the live `cliphist`.
 * The badge/meter work is its own feature now: `mstatus` badge items
   (`NSStatusItem`-style), the wifi meter (`macui/traffic.py`,
   `bin/mstatus-net`, `bin/traffic`, hover reveal, popup rows and the

@@ -139,7 +139,123 @@ def _calc_query(text):
     stripped = text.strip()
     return bool(re.fullmatch(r"[\d()\s\+\-\*/%.]+", stripped)) and \
         bool(re.search(r"\d", stripped)) and \
-        bool(re.search(r"[+\-*/]", stripped))
+        bool(re.search(r"[+\-*/%]", stripped))
+
+
+# the measures Spotlight converts, each in its own family, every unit
+# written as how many of the family's base it is
+_UNITS = {
+    "length": {
+        "mm": 0.001, "millimetre": 0.001, "millimeter": 0.001,
+        "cm": 0.01, "centimetre": 0.01, "centimeter": 0.01,
+        "m": 1.0, "metre": 1.0, "meter": 1.0,
+        "km": 1000.0, "kilometre": 1000.0, "kilometer": 1000.0,
+        "in": 0.0254, "inch": 0.0254, "inches": 0.0254,
+        "ft": 0.3048, "foot": 0.3048, "feet": 0.3048,
+        "yd": 0.9144, "yard": 0.9144, "yards": 0.9144,
+        "mi": 1609.344, "mile": 1609.344, "miles": 1609.344,
+        "nmi": 1852.0, "nautical mile": 1852.0,
+    },
+    "mass": {
+        "mg": 1e-6, "g": 0.001, "gram": 0.001, "grams": 0.001,
+        "kg": 1.0, "kilogram": 1.0, "kilograms": 1.0,
+        "t": 1000.0, "tonne": 1000.0, "ton": 1000.0,
+        "oz": 0.028349523125, "ounce": 0.028349523125,
+        "lb": 0.45359237, "lbs": 0.45359237, "pound": 0.45359237,
+        "pounds": 0.45359237, "st": 6.35029318, "stone": 6.35029318,
+    },
+    "volume": {
+        "ml": 0.001, "millilitre": 0.001, "milliliter": 0.001,
+        "l": 1.0, "litre": 1.0, "liter": 1.0, "litres": 1.0,
+        "liters": 1.0,
+        "tsp": 0.00492892159375, "teaspoon": 0.00492892159375,
+        "tbsp": 0.01478676478125, "tablespoon": 0.01478676478125,
+        "floz": 0.0295735295625, "fluid ounce": 0.0295735295625,
+        "cup": 0.2365882365, "cups": 0.2365882365,
+        "pt": 0.473176473, "pint": 0.473176473,
+        "qt": 0.946352946, "quart": 0.946352946,
+        "gal": 3.785411784, "gallon": 3.785411784, "gallons": 3.785411784,
+    },
+    "speed": {
+        "m/s": 1.0, "kph": 1 / 3.6, "km/h": 1 / 3.6, "kmh": 1 / 3.6,
+        "mph": 0.44704, "kn": 0.514444, "knot": 0.514444,
+        "knots": 0.514444,
+    },
+    "data": {
+        "b": 1.0, "byte": 1.0, "bytes": 1.0,
+        "kb": 1000.0, "mb": 1e6, "gb": 1e9, "tb": 1e12,
+        "kib": 1024.0, "mib": 1024.0 ** 2, "gib": 1024.0 ** 3,
+        "tib": 1024.0 ** 4,
+    },
+    "time": {
+        "ms": 0.001, "s": 1.0, "sec": 1.0, "secs": 1.0, "second": 1.0,
+        "seconds": 1.0, "min": 60.0, "mins": 60.0, "minute": 60.0,
+        "minutes": 60.0, "h": 3600.0, "hr": 3600.0, "hour": 3600.0,
+        "hours": 3600.0, "day": 86400.0, "days": 86400.0,
+        "week": 604800.0, "weeks": 604800.0,
+    },
+}
+
+_TEMP = {"c": "c", "°c": "c", "celsius": "c",
+         "f": "f", "°f": "f", "fahrenheit": "f",
+         "k": "k", "kelvin": "k"}
+
+
+def _norm_unit(name):
+    return name.strip().lower().lstrip("°").replace("degrees ", "")
+
+
+def _fmt_number(value):
+    """An answer written the way a person would: whole numbers whole."""
+    if isinstance(value, int) or (isinstance(value, float)
+                                  and value.is_integer()):
+        return f"{int(value)}"
+    if isinstance(value, float) and (abs(value) >= 1e12
+                                     or 0 < abs(value) < 1e-4):
+        return f"{value:.6g}"
+    return f"{round(value, 6)}"
+
+
+_CONVERT_RE = re.compile(
+    r"^\s*(-?\d[\d,._]*)\s*([a-z°][a-z°%/ ]*?)\s+(?:to|in|as)\s+"
+    r"([a-z°][a-z°%/ ]*?)\s*$", re.IGNORECASE)
+
+
+def _convert(text):
+    """A measure turned into its other unit: 10 km to mi is 6.21371 mi.
+
+    The table is local, so no program is asked and the answer comes at
+    the speed of a keystroke; only the families written above answer.
+    """
+    match = _CONVERT_RE.match(text)
+    if not match:
+        return None
+    raw, source, target = match.groups()
+    try:
+        amount = float(raw.replace(",", "").replace("_", ""))
+    except ValueError:
+        return None
+    source, target = _norm_unit(source), _norm_unit(target)
+    if source == target:
+        return None
+
+    if source in _TEMP and target in _TEMP:
+        kelvin = {"c": amount + 273.15,
+                  "f": (amount - 32) * 5 / 9 + 273.15,
+                  "k": amount}[_TEMP[source]]
+        result = {"c": kelvin - 273.15,
+                  "f": (kelvin - 273.15) * 9 / 5 + 32,
+                  "k": kelvin}[_TEMP[target]]
+        answer = _fmt_number(result)
+        shown = f"{answer}°{target.upper()}"
+        return shown, shown
+
+    for family in _UNITS.values():
+        if source in family and target in family:
+            result = amount * family[source] / family[target]
+            answer = _fmt_number(result)
+            return f"{answer} {target}", answer
+    return None
 
 
 class Spotlight(Panel):
@@ -227,6 +343,11 @@ class Spotlight(Panel):
         answer = _calc(text) if _calc_query(text) else None
         if answer is not None:
             results.append((f"= {answer}", answer, "calc"))
+        else:
+            converted = _convert(text)
+            if converted is not None:
+                shown, _copied = converted
+                results.append((f"= {shown}", shown, "calc"))
 
         # the projects of the desk, with the verbs they offer
         results.extend(self._projects(text))
@@ -285,32 +406,6 @@ class Spotlight(Panel):
         if "clipboard" not in text.lower():
             return []
         out = state.run("cliphist list")
-        rows = []
-        for line in out.splitlines()[:4]:
-            entry_id, _, piece = line.partition("\t")
-            if not piece:
-                continue
-            rows.append((piece.strip()[:60] or "an image",
-                         entry_id, "clip"))
-        return rows
-
-    def _projects(self, text):
-        """The rows a project offers when its name has been typed."""
-        needle = text.lower()
-        rows = []
-        for name, path, tagline in PROJECTS:
-            if needle in name:
-                payload = os.path.expanduser(path)
-                rows.append((f"Open {name} in Finder", payload, "project"))
-                rows.append((f"Terminal at {name}",
-                             payload, "project-terminal"))
-        return rows
-
-    def _clipboard_rows(self, text):
-        """The last entries of the clipboard, for the word clipboard."""
-        if "clipboard" not in text.lower():
-            return []
-        out = run("cliphist list")
         rows = []
         for line in out.splitlines()[:4]:
             entry_id, _, piece = line.partition("\t")
