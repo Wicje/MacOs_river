@@ -159,6 +159,12 @@ and over and systemd put it into the start limit.  What was wrong:
 
 ## 4. Smaller things
 
+* Dictation can tidy its transcript, 2026-11-06: `"dictation_punct"` in
+  config.json (off by default) runs the text through a small pass that
+  raises the pronoun i, capitalises sentence starts and the first
+  letter, closes the gaps before punctuation and puts a full stop on
+  the end — no words or commas added.  Unit-checked; the whisper path
+  itself was already proven with the real microphone.
 * The lazy-loading of the rare panels was measured and not kept,
   2026-11-06: building Settings, Launchpad, Mission Control, the
   notification centre, About and Force Quit only when first opened gave

@@ -10,13 +10,16 @@ transcriber is the same whisper wrapper the rest of the shell uses.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import signal
 import struct
 import subprocess
 import sys
 import time
 
+CONFIG = os.path.expanduser("~/.config/macshell/config.json")
 WAV = "/tmp/dictation.wav"
 PID_FILE = "/tmp/dictation.pid"
 VOICE = os.path.expanduser("~/venvs/voice/bin/python")
@@ -82,6 +85,40 @@ def _stop_recorder(recorder):
             pass
 
 
+def _punct_enabled():
+    """Whether `dictation_punct` asks the transcript to be tidied."""
+    try:
+        with open(CONFIG) as fh:
+            return bool(json.load(fh).get("dictation_punct", False))
+    except (OSError, ValueError):
+        return False
+
+
+_AFTER_STOP = re.compile(r"([.!?]\s+|\n+)([a-z])")
+
+
+def _tidy(text):
+    """The small things a typist would do without thinking.
+
+    The transcription comes back as a run of words: the pronoun i stays
+    lower case, the first letter is not raised, and the last word has no
+    stop.  The pass raises the sentence starts, sets a full stop at the
+    end, closes the gaps before punctuation and opens them after.  It
+    adds no words and no commas — the meaning is left alone.
+    """
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return text
+    text = re.sub(r"\bi\b", "I", text)
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    text = re.sub(r"([,;:])(?=[^\s\d])", r"\1 ", text)
+    text = _AFTER_STOP.sub(lambda m: m.group(1) + m.group(2).upper(), text)
+    text = text[0].upper() + text[1:]
+    if text[-1] not in ".!?":
+        text += "."
+    return text
+
+
 def _transcribe():
     try:
         result = subprocess.run(
@@ -94,6 +131,8 @@ def _transcribe():
     if not text:
         _notify("Dictation", "Nothing was said.", 4000)
         return
+    if _punct_enabled():
+        text = _tidy(text)
     _notify("Dictation", "Done.", 2000)
     if os.environ.get("MACSHELL_DICTATION_NO_TYPE"):
         return
