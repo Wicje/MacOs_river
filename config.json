@@ -12,6 +12,7 @@
     "show_desktop_icons": false,
     "dock_mode": "desktop",
     "notch_mode": "auto",
+    "record_audio": false,
     "glass_opacity": 1.28,
     "glass_tint": 0.01,
     "cc_tiles": [

@@ -9,12 +9,14 @@ restarted without losing the recording.
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import signal
 import subprocess
 import sys
 import time
 
+CONFIG = os.path.expanduser("~/.config/macshell/config.json")
 PID_FILE = "/tmp/macshell-record.pid"
 LOCK_FILE = "/tmp/macshell-record.lock"
 PATH_FILE = "/tmp/macshell-record.path"
@@ -42,6 +44,37 @@ def recording():
     return bool(pid and os.path.exists(f"/proc/{pid}"))
 
 
+def _audio_args():
+    """The audio flag for the take, from `record_audio` in config.json.
+
+    false (the default) records the picture alone; "mic" takes the
+    microphone; "system" takes the monitor of the default output, so the
+    sound of the programs lands in the file without a speaker in the
+    room.  Both were tried with wf-recorder on this machine: each writes
+    an aac stream beside the h264 one.
+    """
+    try:
+        with open(CONFIG) as fh:
+            choice = json.load(fh).get("record_audio", False)
+    except (OSError, ValueError):
+        return []
+    if not choice:
+        return []
+    if choice in ("system", "output", "monitor"):
+        try:
+            sink = subprocess.run(["pactl", "get-default-sink"],
+                                  capture_output=True, text=True,
+                                  timeout=2).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            sink = ""
+        if sink:
+            return [f"--audio={sink}.monitor"]
+        return []
+    if choice in (True, "mic", "microphone", "input"):
+        return ["--audio"]
+    return []
+
+
 def start():
     geo = ""
     try:
@@ -54,7 +87,7 @@ def start():
     os.makedirs(VIDEOS, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     path = os.path.join(VIDEOS, f"Recording_{stamp}.mp4")
-    command = ["wf-recorder", "-f", path, "-g", geo]
+    command = ["wf-recorder", "-f", path, "-g", geo, *_audio_args()]
     try:
         proc = subprocess.Popen(command, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL,

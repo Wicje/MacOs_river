@@ -29,7 +29,11 @@ a real voice).
   The red light now carries its elapsed time too (0:32, then 1:05…),
   written as a start stamp by the recorder and ticked every second by
   the notch; simulated with a fake pid/stamp while the card was up, the
-  clock was seen counting 2:01, 2:02.
+  clock was seen counting 2:01, 2:02.  A take can carry sound as well:
+  `"record_audio"` in config.json is false by default, "mic" takes the
+  microphone, and "system" takes the monitor of the default output;
+  both paths were run through wf-recorder here and each file held an
+  aac stream beside the h264 one.
 * The phone hub, with the owner's phone in hand: Safari keeping the
   fetch alive, one file upload through the pickers, and a duplicate
   file landing as `name (1).ext`.  (Section 5 below carries the whole
