@@ -337,6 +337,10 @@ class Settings(Panel):
         y += 38 * scale
         self._switch_row(cr, x, y, w, scale, pal, "Show the widgets",
                          "show_widgets", True, action=self.shell.sync_widgets)
+        y += 38 * scale
+        self._switch_row(cr, x, y, w, scale, pal, "Show the widget strip",
+                         "show_dock_widgets", True,
+                         action=self.shell.sync_dock_widgets)
         y += 48 * scale
 
         draw.draw_text(cr, x, y, "Wallpaper", 11 * scale, pal["text_faint"],

@@ -73,6 +73,10 @@ BASE = {
     "edge_light_temp": 0.3,
     "edge_light_radius": 22,
     "widget_weather_h": 64,
+    # the widget strip above the dock, and its gallery
+    "strip_card_h": 66,
+    "strip_gap": 10,
+    "strip_radius": 16,
     # notch
     "notch_width": 520,
     "notch_height": 140,
@@ -174,6 +178,9 @@ DEFAULTS = {
     # the tiles of the control centre and the buttons of the notch
     "cc_tiles": [],
     "notch_actions": [],
+    # the cards of the widget strip above the dock, and their switch
+    "dock_widgets": ["clock", "analog", "weather"],
+    "show_dock_widgets": True,
 }
 
 

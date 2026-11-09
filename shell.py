@@ -51,6 +51,7 @@ from .panels.stagemanager import StageManager  # noqa: E402
 from .panels.switcher import Switcher  # noqa: E402
 from .panels.spotlight import Spotlight  # noqa: E402
 from .panels.widgets import Widgets  # noqa: E402
+from .panels.widgetgallery import WidgetGallery  # noqa: E402
 
 APPLE_MENU = [
     {"label": "About This Mac", "action": "about"},
@@ -97,6 +98,9 @@ class Shell:
         self.dock = Dock(self.metrics, self)
         self.control_centre = ControlCentre(self.metrics, self)
         self.widgets = Widgets(self.metrics, self)
+        # the gallery is the sheet that fills the dock's widgets and
+        # empties them again
+        self.widget_gallery = WidgetGallery(self.metrics, self)
         self.desktop_icons = DesktopIcons(self.metrics, self)
         # the receiver of the clicks of the empty desktop: mapped first,
         # so it lies under the icons and the widget column
@@ -142,6 +146,7 @@ class Shell:
             self.edge_light,
             self.menubar, self.notch, self.dock, self.desktop_menu,
             self.widgets,
+            self.widget_gallery,
             self.desktop_icons, self.switcher, self.quicklook,
             self.stage_manager, self.screenshot_hud, self.assistant,
             self.control_centre, self.dropdown, self.spotlight,
@@ -161,6 +166,7 @@ class Shell:
         self.launchpad.hide()
         self.mission_control.hide()
         self.notification_centre.hide()
+        self.widget_gallery.hide()
         self.settings.hide()
         self.switcher.hide()
         self.quicklook.hide()
@@ -264,6 +270,10 @@ class Shell:
             self.launchpad.toggle()
         elif command == "widgets":
             self.toggle_widgets()
+        elif command == "wstrip":
+            self.toggle_widget_strip()
+        elif command == "widgetgallery":
+            self.widget_gallery.toggle_visible()
         elif command == "switcher":
             self.switcher.toggle()
         elif command == "stage":
@@ -1024,6 +1034,15 @@ class Shell:
         visible = not self.metrics.config.get("show_widgets", True)
         self._set_config("show_widgets", visible)
         self.widgets.set_visible(visible)
+
+    def toggle_widget_strip(self):
+        visible = not self.metrics.config.get("show_dock_widgets", True)
+        self._set_config("show_dock_widgets", visible)
+        self.dock.reload_widgets()
+
+    def sync_dock_widgets(self):
+        """The gallery or the settings asked the shelf to re-dock."""
+        self.dock.reload_widgets()
 
     def cycle_edge_light(self):
         """The Edge Light: off, auto (during a call), then always on."""

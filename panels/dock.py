@@ -25,6 +25,8 @@ from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
 from ..macui import apps, draw, glyphs, state  # noqa: E402
 from ..macui.panel import Panel  # noqa: E402
 
+from . import widgetstrip  # noqa: E402
+
 DEFAULT_APPS = [
     {"id": "launchpad", "label": "Launchpad", "cmd": "", "special": "launchpad",
      "glyph": "grid", "app": ""},
@@ -188,6 +190,15 @@ class Dock(Panel):
         m = metrics
         self._base_margin = int(m.px("dock_margin_bottom"))
         self._pad_y = m.px("dock_pad_y")
+        # the docked widgets: measured before the shelf stands, because
+        # the shelf's own height grows to carry the cards
+        self._widget_cards: list = []
+        self._widget_span = 0.0
+        self._widget_height = 0.0
+        self._widget_extra = 0.0
+        self._widget_buttons: list = []
+        self._ctx = {}
+        self._widget_tick_source = None
         self._icons: dict = {}
         self._last_click = None
         self._items_cache = self._build_items()
@@ -214,6 +225,11 @@ class Dock(Panel):
         self._animating = False
         self._bounce = -1
         self._bounce_started = 0.0
+        # the widgets of Tahoe dock the shelf at its left end: glass
+        # cards that live in the shelf behind a divider, taller than the
+        # icons, and the shelf grows to carry them
+        self.refresh_widgets(paint=False)
+        self.reload_widgets()
 
         width = self.panel_width()
         self.set_content_size(width, self.panel_height())
@@ -224,6 +240,54 @@ class Dock(Panel):
         self._tag = 1
 
     # -- running apps --------------------------------------------------------
+
+    # -- the docked widgets ----------------------------------------------------
+
+    def reload_widgets(self):
+        """Re-measure the widget cards the shelf docks at its left end.
+
+        The shelf is wide enough for the icons and the zone of the
+        widgets, and it is tall enough for either.
+        """
+        m = self.metrics
+        widgets_wanted = bool(m.config.get("show_dock_widgets", True))
+        scales = widgetstrip.enabled_widgets(m.config) if widgets_wanted \
+            else []
+        gap = m.px("strip_gap")
+        # the cards ride the icons: one tile, the height of an app icon
+        height = int(self._size["base"])
+        cards = []
+        x = 0.0
+        span = 0.0
+        for kind in scales:
+            w = int(widgetstrip.WIDTHS[kind] * m.scale)
+            cards.append((kind, x, w))
+            x += w + gap
+        if cards:
+            # the breathing room before the divider to the apps
+            span = x - gap + 16 * m.scale
+        self._widget_cards = cards
+        self._widget_span = span
+        self._widget_height = height if cards else 0.0
+        self._widget_extra = 0.0
+        self._resize()
+        # the cards tick, because the clock of the first card must move
+        if cards and self._widget_tick_source is None:
+            self._widget_tick_source = GLib.timeout_add(1000, self._widget_tick)
+        elif not cards and self._widget_tick_source is not None:
+            GLib.source_remove(self._widget_tick_source)
+            self._widget_tick_source = None
+
+    def refresh_widgets(self, paint=True):
+        """Gather the context the card painters read."""
+        self._ctx = widgetstrip.snapshot_ctx(self.metrics)
+        if paint:
+            self.redraw()
+
+    def _widget_tick(self):
+        if self.get_visible() and self._widget_cards:
+            self.refresh_widgets()
+        return bool(self._widget_tick_source)
 
     def _build_items(self):
         """The dock's items: the programs, the recent ones and the trash.
@@ -346,12 +410,13 @@ class Dock(Panel):
     # -- geometry ------------------------------------------------------------
 
     def panel_height(self, m=None):
-        shelf_h = self._size["base"] + self._pad_y * 2
+        shelf_h = self.shelf_height()
         return int(shelf_h + (self._size["top"] - self._size["base"])
                    + TOOLTIP_SPACE)
 
     def shelf_height(self, m=None):
-        return self._size["base"] + self._pad_y * 2
+        return int(self._size["base"] + (self._widget_extra or 0)
+                   + self._pad_y * 2)
 
     def panel_width(self):
         """Width of the dock surface.
@@ -360,7 +425,7 @@ class Dock(Panel):
         to grow), so clicks outside the dock still reach the windows
         underneath.
         """
-        return int(self._size["width"])
+        return int(self._size["width"] + self._widget_span)
 
     def _compute_layout(self):
         """Icon geometry for the current pointer position.
@@ -386,8 +451,10 @@ class Dock(Panel):
             x += size + gap
 
         total = centres[-1] + sizes[-1] / 2 if centres else 0
-        shelf_w = total + pad_x * 2
+        zone = self._widget_span if self._widget_cards else 0.0
+        shelf_w = total + pad_x * 2 + zone
         shelf_x = (width - shelf_w) / 2
+        row_x = shelf_x + pad_x + zone
 
         shelf_h = self.shelf_height()
         # the shelf sits at the bottom of the surface and slides down into
@@ -399,9 +466,9 @@ class Dock(Panel):
         for index, size in enumerate(sizes):
             layout.append({
                 "index": index,
-                "x": shelf_x + pad_x + centres[index] - size / 2,
+                "x": row_x + centres[index] - size / 2,
                 "size": size,
-                "centre": shelf_x + pad_x + centres[index],
+                "centre": row_x + centres[index],
                 "bottom": icon_bottom,
             })
         self._layout = layout
@@ -422,6 +489,7 @@ class Dock(Panel):
         gap = self._size["gap"]
         pad_x = self._size["pad_x"]
         count = len(self._sizes)
+        zone_w = self._widget_span if self._widget_cards else 0.0
 
         width, _ = self.content_size()
         if width <= 0:
@@ -433,11 +501,12 @@ class Dock(Panel):
         for _ in range(count):
             centres.append(x + base / 2)
             x += base + gap
-        shelf_w = centres[-1] + base / 2 + pad_x * 2 if centres else 0.0
+        shelf_w = centres[-1] + base / 2 + pad_x * 2 + zone_w \
+            if centres else 0.0
         shelf_x = (width - shelf_w) / 2
 
         # the pointer in the dock's own coordinate space
-        local = pointer_x - (shelf_x + pad_x)
+        local = pointer_x - (shelf_x + pad_x + zone_w)
 
         targets = [base] * count
         for _ in range(2):
@@ -530,6 +599,8 @@ class Dock(Panel):
             exponent=m.squareness, shadow=True, shadow_spread=16,
         )
 
+        self._paint_widgets(cr, shelf_x, shelf_y, shelf_w, shelf_h, pal, m)
+
         for item in layout:
             index = item["index"]
             size = item["size"]
@@ -564,6 +635,36 @@ class Dock(Panel):
 
         if self.hover >= 0 and self.hover < len(layout):
             self._paint_tooltip(cr, layout[self.hover])
+
+    def _paint_widgets(self, cr, shelf_x, shelf_y, shelf_w, shelf_h, pal, m):
+        """The widget cards the shelf carries at its left end.
+
+        The cards paint flat on the shelf: tiles of glass that stand on
+        the same shelf as the icons, behind a divider, the way Tahoe
+        docks its widgets.
+        """
+        if not self._widget_cards:
+            return
+        s = m.scale
+        pad_x = self._size["pad_x"]
+        self._widget_buttons = []
+        card_y = shelf_y + (shelf_h - self._widget_height) / 2
+        start = shelf_x + pad_x
+        gap = m.px("strip_gap")
+        cards_end = start
+        first = True
+        for kind, dx, w in self._widget_cards:
+            x = start + dx
+            cards_end = x + w
+            if first:
+                first = False
+            self._widget_buttons = widgetstrip.paint_card(
+                kind, self._ctx, cr, x, card_y, w, self._widget_height,
+                m, pal, self._widget_buttons, framed=False)
+        # the divider between the widgets and the icons
+        line_x = cards_end + 8 * s
+        draw.fill_squircle(cr, line_x, shelf_y + shelf_h * 0.22, 1,
+                           shelf_h * 0.56, 0.5, pal["separator"], 2.0)
 
     def _paint_icon(self, cr, app, x, y, size, pal):
         """The icon of an application.
@@ -707,9 +808,28 @@ class Dock(Panel):
         # the shelf slides out of the surface, and the region with it
         return [(shelf_x, top, shelf_w, icon_bottom - top)]
 
+    def _widget_rects(self):
+        """The slots of the widget cards, in the surface's own space."""
+        if not self._widget_cards:
+            return []
+        shelf_x, shelf_y, _w, shelf_h = self._shelf
+        pad_x = self._size["pad_x"]
+        card_y = shelf_y + (shelf_h - self._widget_height) / 2
+        rects = []
+        for kind, dx, w in self._widget_cards:
+            rects.append((kind, shelf_x + pad_x + dx, card_y, w,
+                          self._widget_height))
+        return rects
+
     def on_motion(self, x, y):
         self._update_targets()
         self.shell.keep_alive("dock")
+        for kind, cx, cy, w, h in self._widget_rects():
+            if cx <= x <= cx + w and cy <= y <= cy + h:
+                if self.hover != -1:
+                    self.hover = -1
+                    self.redraw()
+                return False
         for item in self._layout:
             if item["x"] <= x <= item["x"] + item["size"]:
                 if self.hover != item["index"]:
@@ -723,6 +843,20 @@ class Dock(Panel):
 
     def on_click(self, x, y, button):
         self._last_click = (round(x), round(y), button)
+        for kind, cx, cy, w, h in self._widget_rects():
+            if cx <= x <= cx + w and cy <= y <= cy + h:
+                if button == 3:
+                    shell_menu = self.shell
+                    shell_menu.widget_gallery.toggle_visible()
+                    return True
+                for action, bx, by, bw, bh in self._widget_buttons:
+                    if bx <= x <= bx + bw and by <= y <= by + bh:
+                        widgetstrip.button_click(self.shell, self._ctx,
+                                                 action)
+                        self.refresh_widgets()
+                        return True
+                widgetstrip.card_click(self.shell, kind)
+                return True
         for item in self._layout:
             if item["x"] <= x <= item["x"] + item["size"]:
                 index = item["index"]

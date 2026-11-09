@@ -105,8 +105,14 @@ Without a model the panel says so instead of failing.
 
 ## The notch
 
-The notch is the card that hangs from the top of the screen, the way macOS
-26 has it:
+The notch is the card that hangs from the top of the screen, and it has
+two sizes, the way the Dynamic Island does:
+
+* at rest it is a **slim pill**: the song that plays with its art and the
+  red music chip, the hands of the timer when one runs, or a quiet island
+  with the battery; the pill carries the play and next buttons of its own,
+* when the pointer rests on it (or it is clicked) the pill opens into the
+  **whole dashboard**:
 
 * the **media card** when something is playing: the album art, the title,
   the artist, the progress of the track with the time on both sides and the
@@ -118,7 +124,8 @@ The notch is the card that hangs from the top of the screen, the way macOS
 * the **calendar** and the clock when there is nothing else to say.
 
 The card slides down when the pointer reaches the top of the screen and
-slides away again when it leaves.  It is connected to the media player
+slides away again when it leaves; when the pointer walks off the dashboard
+the island folds back into its pill.  It is connected to the media player
 through MPRIS, so any player that speaks it fills the card.
 
 ## The phone hub
@@ -162,8 +169,27 @@ Dolphin, VS Code, GIMP, mpv, Audacity, OBS, Spotify and Steam.
 
 ## The widgets
 
-The column under the menu bar carries the calendar, the clock, the system
-gauges, **Screen Time** and the weather:
+The shelf of the dock carries the widgets the way the Tahoe dock does: a
+zone of glass cards at its left end, behind a divider, each card the
+height of an application icon:
+
+* the **clock** — the time and the day of the month,
+* the **analog clock** — a dial with a red second hand,
+* the **weather** — the condition and the temperature where the machine
+  is, from wttr.in, remembered for half an hour,
+* the **calendar** — the red month above the number of today,
+* the **media** — the album art, the title, the artist, the progress of
+  the track and the playback buttons (anything that speaks MPRIS),
+* the **battery** — the percentage, and the charge when it is charging,
+* the **sticky note** — the open lines of this repository's `TODO.md`.
+
+**System Settings → Desktop & Dock** holds the *Show the widget strip*
+switch, and the widget gallery — the sheet the shelf carries above itself
+— fills the zone with cards or empties it again; the choices are kept in
+`~/.config/macshell/config.json` (`dock_widgets`, `show_dock_widgets`).
+
+The column under the menu bar keeps the older widgets of the desktop: the
+calendar, the clock, the system gauges, **Screen Time** and the weather column:
 
 * **Screen Time** — the shell counts how long every application was in
   the foreground today, the way macOS Tahoe does, and keeps it in

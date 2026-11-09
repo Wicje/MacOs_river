@@ -145,7 +145,14 @@ def plain_key(value):
 
 
 def _matches(entry, key):
-    """True when a desktop entry is the application with that id."""
+    """True when a desktop entry is the application with that id.
+
+    A window does not always carry the desktop name: Continua exports
+    itself as "continua-browser" and the Claude window as
+    "com.anthropic.Claude", while the entries are "Continua" and
+    "Claude".  A long enough name inside the other one is taken as the
+    same program, so those windows still find their icon and label.
+    """
     if not key:
         return False
     if key in ((entry.get("id") or "").lower(),
@@ -154,8 +161,22 @@ def _matches(entry, key):
     plain = plain_key(key)
     if not plain:
         return False
-    return plain in (plain_key(entry.get("id") or ""),
-                     plain_key(entry.get("name") or ""))
+    names = [plain_key(entry.get("id") or ""),
+             plain_key(entry.get("name") or "")]
+    command = (entry.get("exec") or "").split()
+    if command:
+        names.append(plain_key(os.path.basename(command[0])))
+    for name in names:
+        if not name:
+            continue
+        if plain == name:
+            return True
+        # "continua" in "continuabrowser", "claude" in
+        # "comanthropicclaude": short words such as "code" stay exact.
+        if min(len(plain), len(name)) >= 5 and (
+                plain in name or name in plain):
+            return True
+    return False
 
 
 def icon_for_app(name):

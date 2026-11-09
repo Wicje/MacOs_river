@@ -3,10 +3,12 @@
 macOS 26 turns the hardware notch into a panel: a black card hanging from
 the top centre of the screen.  This one carries
 
-* the media widget, with the album art and the playback controls,
-* the calendar when nothing is playing,
-* a row of round quick actions (clipboard, focus, screenshot),
-* the clock and the battery on the right.
+* the Nook page: the media widget with the album art and the playback
+  controls, or the month, the week strip and the schedule when nothing
+  is playing,
+* the Tray page: the file shelf, the round quick actions (clipboard,
+  focus, screenshot, …) and the clock with the battery,
+* the camera hole and the pedigree lights at the top right.
 """
 
 from __future__ import annotations
@@ -83,12 +85,17 @@ class Notch(Panel):
         )
         self.shell = shell
         self._offset = self._slide_distance
-        self.set_content_size(width, height)
         # the card slides with a spring: it overshoots the stop and
         # settles, the way the Dynamic Island breathes in macOS
         self.spring_slide = True
-        screen = metrics.width or 1366
-        self.set_horizontal_offset(int((screen - width) / 2))
+        # the island has two sizes, the way the Dynamic Island does: a
+        # slim pill at rest, the whole dashboard open under the pointer
+        self._expanded = False
+        self._expand_source = None
+        self._collapse_source = None
+        # the two pages of the card: Nook (media, schedule) and Tray
+        # (shelf, actions).  The tabs of the card switch between them.
+        self._page = "nook"
         self._media = None
         self._clip = {}
         self._dnd = False
@@ -115,15 +122,80 @@ class Notch(Panel):
         self._shelf_pointer = (-1.0, -1.0)
         self._load_shelf()
         self._shelf_wire_dnd()
+        self._apply_size()
+
+    # -- the two sizes -------------------------------------------------------
+
+    def _pill_width(self):
+        """The width of the pill at rest: only what it says needs room."""
+        m = self.metrics
+        s = m.scale
+        if self._activity is not None or self._flash:
+            return int(250 * s)
+        if self._media:
+            return int(252 * s)
+        if self._timer["running"]:
+            return int(148 * s)
+        return int(118 * s)
+
+    def _apply_size(self):
+        """Settle the surface to the size of the current island shape."""
+        m = self.metrics
+        s = m.scale
+        screen = m.width or 1366
+        if self._expanded:
+            width = int(m.px("notch_width"))
+            height = int(m.px("notch_height"))
+        else:
+            width = self._pill_width()
+            height = int(36 * s)
+        self.set_content_size(width, height)
+        self.set_horizontal_offset(int((screen - width) / 2))
+
+    def _rest_pill(self):
+        """Back to the pill, the way the island settles when the pointer
+        walks off it."""
+        self._expanded = False
+        self._cancel_expand()
+        self._apply_size()
+        self.refresh()
+
+    def _expand_now(self):
+        self._cancel_expand()
+        self._expanded = True
+        self._apply_size()
+        self.refresh()
+
+    def _cancel_expand(self):
+        if self._expand_source is not None:
+            GLib.source_remove(self._expand_source)
+            self._expand_source = None
+
+    def _expand_for_hover(self):
+        """The island waits a breath and then opens without being asked,
+        the way the Dynamic Island does when the pointer rests on it."""
+        self._expand_source = None
+        if self.pointer != (-1, -1) and self.get_visible():
+            self._expanded = True
+            self._apply_size()
+            self.refresh()
+        return False
+
+    def _collapse_if_left(self):
+        self._collapse_source = None
+        if self._expanded and self.pointer == (-1, -1):
+            self._rest_pill()
+        return False
 
     def input_rects(self):
-        """Only the card takes the pointer.
+        """Only the island takes the pointer.
 
         When the card slides up out of the way the region is empty, so the
         menu bar underneath keeps its clicks.
         """
-        width = self.metrics.px("notch_width")
-        height = self.content_size()[1] or self.metrics.px("notch_height")
+        content = self.content_size()
+        width = max(1, int(content[0] or self.metrics.px("notch_width")))
+        height = max(1, int(content[1] or self.metrics.px("notch_height")))
         return [(0, -self._offset, width, height)]
 
     # -- visibility ----------------------------------------------------------
@@ -186,7 +258,7 @@ class Notch(Panel):
             None if self._record_elapsed is None
             else int(self._record_elapsed),
             repr(self._activities),
-            getattr(self, "_shelf_shown", False),
+            self._page,
         )
         if signature == getattr(self, "_signature", None):
             return
@@ -213,7 +285,134 @@ class Notch(Panel):
             except Exception:
                 self._art = None
 
-    # -- painting ------------------------------------------------------------
+    # -- the pill at rest ----------------------------------------------------
+
+    def _paint_pill(self, cr, width, height, pad, scale, pal):
+        """The slim island at rest, the size macOS hangs at the top.
+
+        A pill of ink carrying only what a palm of the eye can read: the
+        song that is playing, or the hands of the timer, and nothing more.
+        """
+        m = self.metrics
+        s = scale
+        dark = m.config.get("theme", "dark") == "dark"
+        radius = min(18 * s, height * 0.5)
+        # the bloom of the card into the bar behind it
+        for band, alpha in ((2.5, 0.14), (5.5, 0.07)):
+            cr.save()
+            draw.rounded_path(cr, band, band, width - band * 2,
+                              height - band * 2 + 4 * s, radius)
+            cr.set_source_rgba(0.0, 0.0, 0.0, alpha if dark else alpha * 0.5)
+            cr.set_line_width(band)
+            cr.stroke()
+            cr.restore()
+        # the ink of the pill
+        grad = cairo.LinearGradient(0, 0, 0, height)
+        if dark:
+            grad.add_color_stop_rgba(0.0, 0.006, 0.006, 0.008, 1.0)
+            grad.add_color_stop_rgba(1.0, 0.032, 0.032, 0.04, 1.0)
+        else:
+            grad.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 0.97)
+            grad.add_color_stop_rgba(1.0, 0.93, 0.93, 0.95, 0.95)
+        cr.save()
+        draw.rounded_path(cr, 0.0, 0.0, width, height, radius)
+        cr.clip()
+        cr.set_source(grad)
+        cr.rectangle(0, 0, width, height)
+        cr.fill()
+        cr.restore()
+        cr.save()
+        draw.rounded_path(cr, 0.6 * s, 0.6 * s, width - 1.2 * s,
+                          height - 1.2 * s, radius - 0.6 * s)
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.075 if dark else 0.55)
+        cr.set_line_width(1.0)
+        cr.stroke()
+        cr.restore()
+
+        mid_y = height * 0.5
+        playing = bool(self._media) and \
+            (self._media[2] or "").lower() == "playing"
+        row = self._activity or (self._flash[0] if self._flash else None)
+        if row is not None:
+            title = (row.get("title") or "").strip()
+            glyph = self._ACTIVITY_GLYPHS.get(
+                (row.get("kind") or "generic").lower(), "sparkles")
+            getattr(glyphs, glyph)(cr, 12 * s, mid_y - 7 * s, 14 * s,
+                                   pal["accent" if row is self._activity
+                                       else "text_dim"])
+            if title:
+                draw.draw_text(cr, 32 * s, mid_y, title, 10.5 * s,
+                               pal["text"], weight="bold",
+                               baseline="middle",
+                               max_width=width - 44 * s, ellipsize=True)
+        elif self._media:
+            title, artist, _status, _position, _length, _url = self._media
+            art = int(height - 12 * s)
+            art_x, art_y = 9 * s, 6 * s
+            draw.fill_squircle(cr, art_x, art_y, art, art, 8 * s,
+                               pal["fill_hover"], m.squareness)
+            if self._art is not None:
+                pw, ph = self._art.get_width(), self._art.get_height()
+                factor = art / max(pw, ph)
+                cr.save()
+                cr.translate(art_x + (art - pw * factor) / 2,
+                             art_y + (art - ph * factor) / 2)
+                cr.scale(factor, factor)
+                Gdk.cairo_set_source_pixbuf(cr, self._art, 0, 0)
+                cr.paint()
+                cr.restore()
+            else:
+                draw.draw_text(cr, art_x + art / 2, art_y + art / 2,
+                               (title or "?")[0].upper(), art * 0.42,
+                               pal["text_dim"], weight="bold",
+                               align="center", baseline="middle")
+            chip = 13 * s
+            chip_x, chip_y = art_x + art - 5 * s, art_y - 5 * s
+            draw.fill_squircle(cr, chip_x, chip_y, chip, chip, 4 * s,
+                               (1.0, 0.34, 0.32, 1.0), m.squareness)
+            draw.draw_text(cr, chip_x + chip / 2, chip_y + chip / 2,
+                           "♪", 8.5 * s, (1.0, 1.0, 1.0, 1.0),
+                           weight="bold", align="center", baseline="middle")
+            text_x = art_x + art + 10 * s
+            text_w = width - text_x - 52 * s
+            draw.draw_text(cr, text_x, height * 0.34, title or "", 10.5 * s,
+                           pal["text"], weight="bold", baseline="middle",
+                           max_width=text_w, ellipsize=True)
+            if artist:
+                draw.draw_text(cr, text_x, height * 0.68, artist, 8.5 * s,
+                               pal["text_dim"], baseline="middle",
+                               max_width=text_w, ellipsize=True)
+            # the playing line, then the two buttons on the right
+            self._paint_eq(cr, width - 78 * s, height * 0.5, s, pal,
+                           playing)
+            cy = height * 0.5
+            shapes = [("play-pause", "pause" if playing else "play",
+                       11 * s, width - 40 * s),
+                      ("next", "forward", 9 * s, width - 19 * s)]
+            for action, shape, size, cx in shapes:
+                self._paint_button(cr, cx - size / 2, cy - size / 2, size,
+                                   shape, pal)
+                self._buttons.append((action, cx - 9 * s, cy - 9 * s,
+                                      18 * s))
+        else:
+            # the empty island, breathing: the hands of the timer when it
+            # runs, the battery otherwise
+            if self._timer["running"]:
+                left = self._timer_remaining()
+                draw.draw_text(
+                    cr, width / 2, mid_y, _clock(max(0.0, left)),
+                    11 * s, pal["text"], weight="bold", align="center",
+                    baseline="middle")
+            else:
+                glyphs.timer(cr, 12 * s, mid_y - 7 * s, 14 * s,
+                             pal["text_dim"])
+                if self._battery is not None:
+                    draw.draw_text(cr, width - 12 * s, mid_y,
+                                   f"{self._battery}%", 9.5 * s,
+                                   pal["text_faint"], align="right",
+                                   baseline="middle")
+
+    # -- painting -------------------------------------------------------------
 
     def paint(self, cr, width, height):
         m = self.metrics
@@ -224,6 +423,15 @@ class Notch(Panel):
         # the card slides up under the top edge when it is not wanted
         cr.save()
         cr.translate(0, -self._offset)
+
+        # at rest the island is a slim pill carrying only a hint of what
+        # it holds; the pointer opens the whole dashboard
+        if not self._expanded:
+            self._buttons = []
+            self._paint_pill(cr, width, height, m.px("notch_pad"),
+                             m.scale, pal)
+            cr.restore()
+            return
 
         # the card: a rounded rectangle hanging from the top edge.  macOS
         # paints the notch in ink that swallows the bar behind it, so the
@@ -290,6 +498,13 @@ class Notch(Panel):
 
         clip = self._clip or {}
         fresh = clip and (time.time() - clip.get("at", 0)) < 25
+        island = self._activity is not None or bool(self._flash)
+        # the tabs of the pages above the card, and the camera hole with
+        # the lights of the machine at the middle of the top edge
+        if not island:
+            self._paint_tabs(cr, pad, scale, pal)
+        self._paint_camera(cr, width, scale, pal)
+        divider_x = pad + 144 * scale
         if self._activity is not None:
             self._paint_activity(cr, width, height, pad, scale, pal,
                                  self._activity)
@@ -298,26 +513,25 @@ class Notch(Panel):
             # card, so it is seen without shouting
             self._paint_flash(cr, width, height, pad, scale, pal,
                               self._flash[0])
+        elif self._page == "tray":
+            self._paint_shelf(cr, width, height, pad, scale, pal)
         elif media:
             self._paint_media(cr, width, height, pad, scale, pal)
         elif fresh:
             self._paint_clipboard(cr, width, height, pad, scale, pal, clip)
         elif self._timer["running"]:
             self._paint_timer(cr, width, height, pad, scale, pal)
-        elif self._shelf and self._shelf_shown:
-            self._paint_shelf(cr, width, height, pad, scale, pal)
         else:
-            self._paint_calendar(cr, pad, 12 * scale, 132 * scale,
-                                 height - 24 * scale, pal)
+            self._paint_schedule(cr, width, height, pad, scale, pal)
 
-        # the quick actions on the right, the clock under them
-        self._paint_actions(cr, width, height, pad, scale, pal)
+        # the quick actions: on the Tray page they live in the right half
+        if self._page == "tray" and self._activity is None and \
+                not self._flash:
+            self._paint_actions(cr, width, height, pad, scale, pal,
+                                x_left=divider_x + 16 * scale)
+        else:
+            self._paint_actions(cr, width, height, pad, scale, pal)
         self._paint_clock(cr, width, height, pad, scale, pal)
-
-        # the page dots of the left card: the calendar and the shelf
-        if (self._activity is None and not media and not fresh
-                and not self._timer["running"]):
-            self._paint_page_dots(cr, pad, width, height, scale, pal)
 
         # the divider between the left card and the numbers on the right
         if ((self._activity is None and not media
@@ -325,7 +539,7 @@ class Notch(Panel):
             line_x = pad + 144 * scale
             cr.set_source_rgba(*pal["separator"])
             cr.set_line_width(1.0)
-            cr.move_to(line_x, 14 * scale)
+            cr.move_to(line_x, 36 * scale)
             cr.line_to(line_x, height - 14 * scale)
             cr.stroke()
 
@@ -408,6 +622,89 @@ class Notch(Panel):
                        m.font("notch_font_size") * 1.05, pal["text"],
                        weight="bold", baseline="middle",
                        max_width=240 * scale, ellipsize=True)
+
+    # -- the pages of the card --------------------------------------------------
+
+    def _go_page(self, page):
+        """Swap the left card of the notch, the way the tabs ask for."""
+        self._page = page
+        self._shelf_shown = page == "tray"
+        self.refresh()
+
+    def _paint_tabs(self, cr, pad, scale, pal):
+        """The two tabs above the card: the Nook and the Tray.
+
+        The tab in use reads in ink and its accent icon; the one that
+        waits stays faint, quietly inviting the pointer.
+        """
+        tabs = (("nook", "Nook", "sparkles"), ("tray", "Tray", "grid"))
+        x = pad
+        y = 8 * scale
+        for name, label, glyph in tabs:
+            active = self._page == name
+            faint = (*pal["text_faint"][:3], 0.75)
+            fn = getattr(glyphs, glyph, None)
+            if fn:
+                fn(cr, x, y, 11 * scale,
+                   pal["accent"] if active else faint)
+            draw.draw_text(cr, x + 17 * scale, y + 5.5 * scale, label,
+                           10.5 * scale, pal["text"] if active else faint,
+                           weight="bold", baseline="middle")
+            self._buttons.append(("tab:" + name, x - 3 * scale,
+                                  y - 6 * scale, 52 * scale))
+            x += 58 * scale
+
+    def _paint_camera(self, cr, width, scale, pal):
+        """The camera hole at the middle of the top edge, and the lights.
+
+        macOS admits what the machine sees: a blue dot of the camera, the
+        orange of the microphone, the red of the long take with its
+        elapsed seconds, all around a real hole of glass.
+        """
+        m = self.metrics
+        cx = width / 2
+        cy = 11 * scale
+        r = 4.4 * scale
+        cr.save()
+        cr.set_source_rgba(0.0, 0.0, 0.02, 1.0)
+        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.fill()
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.10)
+        cr.set_line_width(1.0)
+        cr.arc(cx, cy, r - 0.5 * scale, 0, 2 * math.pi)
+        cr.stroke()
+        cr.set_source_rgba(0.28, 0.38, 0.60, 0.45)
+        cr.arc(cx - r * 0.25, cy - r * 0.25, r * 0.35, 0, 2 * math.pi)
+        cr.fill()
+        cr.restore()
+
+        lights = []
+        if getattr(self, "_camera", False):
+            lights.append((0.21, 0.47, 0.91))
+        if getattr(self, "_mic", False):
+            lights.append((1.00, 0.58, 0.00))
+        if getattr(self, "_recording", False):
+            lights.append((1.00, 0.27, 0.25))
+        if not lights:
+            return
+        dot = 8 * scale
+        dot_x = cx - r - 14 * scale
+        if getattr(self, "_recording", False) and \
+                self._record_elapsed is not None:
+            total = int(self._record_elapsed)
+            hours, rest = divmod(total, 3600)
+            minutes, seconds = divmod(rest, 60)
+            stamp = (f"{hours}:{minutes:02d}:{seconds:02d}" if hours
+                     else f"{minutes}:{seconds:02d}")
+            draw.draw_text(cr, cx - r - 14 * scale
+                           - len(lights) * (dot + 6 * scale) - 8 * scale,
+                           cy, stamp, m.font("notch_font_size") * 0.92,
+                           pal["text_dim"], align="right",
+                           baseline="middle")
+        for color in lights:
+            draw.fill_squircle(cr, dot_x - dot / 2, cy - dot / 2, dot, dot,
+                               dot / 2, color, 2.0)
+            dot_x -= dot + 6 * scale
 
     # -- the media card ------------------------------------------------------
 
@@ -593,6 +890,7 @@ class Notch(Panel):
             added += 1
         self._shelf = self._shelf[: self._shelf_max]
         if added:
+            self._page = "tray"
             self._shelf_shown = True
             self._save_shelf()
         self.redraw()
@@ -601,7 +899,7 @@ class Notch(Panel):
         """Drop the stale paths and refresh the small previews."""
         self._shelf = [entry for entry in self._shelf
                        if os.path.exists(entry)]
-        art = 40 * (self.metrics.scale or 1)
+        art = 30 * (self.metrics.scale or 1)
         for path in self._shelf:
             if path in self._shelf_art:
                 continue
@@ -619,7 +917,8 @@ class Notch(Panel):
         """The shelf page: a dashed tray with the files that were dropped."""
         m = self.metrics
         self._shelf_thumbs()
-        x, y, w, h = pad, 12 * scale, 132 * scale, height - 24 * scale
+        x, y = pad, 40 * scale
+        w, h = 132 * scale, height - 52 * scale
         hot = self._shelf_hover
 
         line_r = 12 * scale
@@ -633,7 +932,7 @@ class Notch(Panel):
         cr.restore()
 
         # the cards of the shelf: newest first, two per row
-        cell = 44 * scale
+        cell = 36 * scale
         gap = 8 * scale
         cols = 2
         shown = self._shelf[: cols * 2]
@@ -719,30 +1018,12 @@ class Notch(Panel):
                            pal["text_faint"], align="center",
                            baseline="middle")
 
-    def _paint_page_dots(self, cr, pad, width, height, scale, pal):
-        """Two dots under the left card: the calendar and the shelf."""
-        if not self._shelf:
-            return
-        gap = 5 * scale
-        total = 3.6 * scale * 2 + gap
-        x = pad + 30 * scale - total / 2
-        y = height - 10 * scale
-        for index, name in enumerate(("calendar", "shelf")):
-            active = (name == "shelf") == self._shelf_shown
-            piece = 15 * scale if active else 3.6 * scale
-            draw.fill_squircle(cr, x, y - 1.8 * scale, piece, 3.6 * scale,
-                               1.8 * scale,
-                               pal["text"] if active
-                               else (*pal["text_faint"][:3], 0.5))
-            self._buttons.append(("page:" + name, x - 2 * scale, y - 5 * scale,
-                                  piece + 4 * scale))
-            x += piece + gap
-
     def _remove_shelf(self, index):
         if 0 <= index < len(self._shelf):
             self._shelf.pop(index)
             self._save_shelf()
             if not self._shelf:
+                self._page = "nook"
                 self._shelf_shown = False
             self.redraw()
 
@@ -785,7 +1066,7 @@ class Notch(Panel):
         left = self._timer_remaining()
 
         cx = pad + 30 * scale
-        cy = 12 * scale + (height - 24 * scale) / 2
+        cy = 40 * scale + (height - 52 * scale) / 2
         r = 22 * scale
         cr.set_line_cap(cairo.LINE_CAP_ROUND)
         # the glow of the ring, the way Nusa lets its timer breathe red
@@ -821,16 +1102,17 @@ class Notch(Panel):
     def _paint_media(self, cr, width, height, pad, scale, pal):
         """The card macOS shows when something is playing.
 
-        The album art, the title, the progress of the track and the
-        playback buttons, the way the notch of macOS 26 has it.
+        The album art with the red chip of the music on its corner, the
+        title, the bars of the song breathing and the playback buttons,
+        the way the notch of macOS 26 has it.
         """
         m = self.metrics
         title, artist, _status, position, length, _url = self._media
-        art = 64 * scale
+        art = m.px("notch_art")
 
         # the album art
         art_x = pad
-        art_y = 16 * scale
+        art_y = 46 * scale
         draw.fill_squircle(cr, art_x, art_y, art, art, 12 * scale,
                            pal["fill_hover"], m.squareness)
         if self._art is not None:
@@ -849,30 +1131,39 @@ class Notch(Panel):
                            pal["text_dim"], weight="bold", align="center",
                            baseline="middle")
 
+        # the red chip of the music, riding the corner of the art
+        chip = 18 * scale
+        chip_x, chip_y = art_x + art - 7 * scale, art_y - 7 * scale
+        draw.fill_squircle(cr, chip_x, chip_y, chip, chip, 5.5 * scale,
+                           (1.0, 0.34, 0.32, 1.0), m.squareness)
+        draw.draw_text(cr, chip_x + chip / 2, chip_y + chip / 2 + 0.5 * scale,
+                       "♪", 11.5 * scale, (1.0, 1.0, 1.0, 1.0),
+                       weight="bold", align="center", baseline="middle")
+
         # the title and the artist, with the bars of the song breathing
         # on the right, the way the closed notch of Nusa carries its wave
         text_x = art_x + art + 16 * scale
-        draw.draw_text(cr, text_x, 34 * scale, title or "",
+        draw.draw_text(cr, text_x, 60 * scale, title or "",
                        m.font("notch_font_size") * 1.25, pal["text"],
                        weight="bold", baseline="middle",
                        max_width=220 * scale, ellipsize=True)
         if artist:
-            draw.draw_text(cr, text_x, 58 * scale, artist,
+            draw.draw_text(cr, text_x, 84 * scale, artist,
                            m.font("notch_font_size") * 1.0, pal["text_dim"],
                            baseline="middle", max_width=220 * scale,
                            ellipsize=True)
         playing = (_status or "").lower() == "playing"
-        self._paint_eq(cr, width - 290 * scale, 34 * scale, scale, pal,
+        self._paint_eq(cr, width - 290 * scale, 52 * scale, scale, pal,
                        playing)
 
         # the airplay button
-        glyphs.airplay(cr, width - 250 * scale, 30 * scale, 16 * scale,
+        glyphs.airplay(cr, width - 250 * scale, 46 * scale, 16 * scale,
                        pal["text_dim"])
 
         # the progress of the track, with the time on both sides
         bar_x = 56 * scale
         bar_w = width - 250 * scale - bar_x
-        bar_y = 92 * scale
+        bar_y = 106 * scale
         draw.draw_text(cr, pad, bar_y, _clock(position), 10 * scale,
                        pal["text_faint"], baseline="middle")
         draw.fill_squircle(cr, bar_x, bar_y - 1.75 * scale, bar_w,
@@ -887,7 +1178,7 @@ class Notch(Panel):
                        10 * scale, pal["text_faint"], baseline="middle")
 
         # the playback buttons, the way macOS lines them up
-        row_y = 118 * scale
+        row_y = 122 * scale
         centre = 198 * scale
         buttons = [
             ("shuffle", "shuffle", 16 * scale),
@@ -917,7 +1208,7 @@ class Notch(Panel):
 
         if image:
             art = 64 * scale
-            draw.fill_squircle(cr, pad, 16 * scale, art, art, 10 * scale,
+            draw.fill_squircle(cr, pad, 34 * scale, art, art, 10 * scale,
                                pal["fill_hover"], m.squareness)
             pixbuf = self._image_for(image)
             if pixbuf is not None:
@@ -925,23 +1216,23 @@ class Notch(Panel):
                 factor = min(art / iw, art / ih)
                 cr.save()
                 cr.translate(pad + (art - iw * factor) / 2,
-                             16 * scale + (art - ih * factor) / 2)
+                             34 * scale + (art - ih * factor) / 2)
                 cr.scale(factor, factor)
                 Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0)
                 cr.paint()
                 cr.restore()
-            draw.draw_text(cr, pad + art + 16 * scale, 40 * scale, "Copied",
+            draw.draw_text(cr, pad + art + 16 * scale, 56 * scale, "Copied",
                            m.font("notch_font_size"), pal["text_faint"],
                            baseline="middle")
-            draw.draw_text(cr, pad + art + 16 * scale, 62 * scale, "an image",
+            draw.draw_text(cr, pad + art + 16 * scale, 78 * scale, "an image",
                            m.font("notch_font_size") * 1.1, pal["text"],
                            weight="bold", baseline="middle")
             return
 
-        draw.draw_text(cr, pad, 34 * scale, "Copied", 11 * scale,
+        draw.draw_text(cr, pad, 44 * scale, "Copied", 11 * scale,
                        pal["text_faint"], baseline="middle")
         for index, line in enumerate(text.splitlines()[:3]):
-            draw.draw_text(cr, pad, 58 * scale + index * 20 * scale, line,
+            draw.draw_text(cr, pad, 68 * scale + index * 20 * scale, line,
                            m.font("notch_font_size") * 1.05, pal["text"],
                            weight="bold" if index == 0 else "normal",
                            baseline="middle", max_width=300 * scale,
@@ -961,31 +1252,38 @@ class Notch(Panel):
 
     # -- the quick actions and the clock --------------------------------------
 
-    def _paint_actions(self, cr, width, height, pad, scale, pal):
+    def _paint_actions(self, cr, width, height, pad, scale, pal,
+                       x_left=None):
         """The round buttons of the card: one calm row, centred.
 
         The row sits in the space between the top edge and the clock, so
         however many buttons the user keeps, they never land on the
-        numbers.  Only when the card is too narrow does the row wrap into
-        a second one.
+        numbers.  On the Tray page the row keeps to the right half of the
+        card, beyond the divider; only when the half is too narrow does
+        the row wrap into a second one.
         """
         wanted = self.metrics.config.get("notch_actions")
         actions = [entry for entry in ACTIONS if not wanted
                    or entry[0] in wanted]
         size = 26 * scale
         gap = 6 * scale
-        usable = width - pad * 2
+        if x_left is not None:
+            usable = width - x_left - pad
+            shift = x_left
+        else:
+            usable = width - pad * 2
+            shift = pad
         per_row = max(2, int((usable + gap) / (size + gap)))
         rows = max(1, -(-len(actions) // per_row))
 
         # where the row may live: under the top edge, over the clock
-        top_zone = 10 * scale
-        clock_top = height - 56 * scale
+        top_zone = 34 * scale
+        clock_top = height - 44 * scale
         space = max(0.0, clock_top - top_zone)
         grid_h = rows * size + (rows - 1) * gap
         y = top_zone + max(0.0, space - grid_h) / 2
         row_w = (per_row * size + (per_row - 1) * gap)
-        x0 = (width - min(row_w, usable)) / 2
+        x0 = shift + max(0.0, usable - min(row_w, usable)) / 2
 
         pointer = getattr(self, "pointer", (-1, -1))
         lit = set()
@@ -1061,7 +1359,6 @@ class Notch(Panel):
         y = height - 42 * scale
         time_text = time.strftime("%H:%M", now)
         time_size = m.font("notch_font_size") * 1.55
-        time_w = draw.text_width(cr, time_text, time_size)
         draw.draw_text(cr, right, y, time_text, time_size, pal["text"],
                        weight="bold", align="right", baseline="middle")
         detail = time.strftime("%a %-d %b", now)
@@ -1077,53 +1374,51 @@ class Notch(Panel):
         draw.draw_text(cr, right, y + 23 * scale, detail,
                        detail_size, pal["text_faint"],
                        align="right", baseline="middle")
-        # the lights: blue while the camera streams, the familiar orange
-        # while the microphone records.  They stand before the clock, so
-        # they read as indicators of the machine, not of the time.
-        lights = []
-        if getattr(self, "_camera", False):
-            lights.append((0.21, 0.47, 0.91))
-        if getattr(self, "_mic", False):
-            lights.append((1.00, 0.58, 0.00))
-        if getattr(self, "_recording", False):
-            lights.append((1.00, 0.27, 0.25))
-        if lights:
-            dot = 8 * scale
-            dot_x = right - time_w - 24 * scale
-            if getattr(self, "_recording", False) and \
-                    self._record_elapsed is not None:
-                total = int(self._record_elapsed)
-                hours, rest = divmod(total, 3600)
-                minutes, seconds = divmod(rest, 60)
-                stamp = (f"{hours}:{minutes:02d}:{seconds:02d}" if hours
-                         else f"{minutes}:{seconds:02d}")
-                stamp_size = m.font("notch_font_size") * 0.95
-                stamp_x = dot_x - len(lights) * (dot + 6 * scale)
-                draw.draw_text(cr, stamp_x, y, stamp, stamp_size,
-                               pal["text_dim"], align="right",
-                               baseline="middle")
-            for color in lights:
-                draw.fill_squircle(cr, dot_x, y - dot / 2, dot, dot,
-                                   dot / 2, color, 2.0)
-                dot_x -= dot + 6 * scale
 
-    def _paint_calendar(self, cr, x, y, w, h, pal):
-        """The little calendar the notch shows when nothing is playing."""
+    def _paint_schedule(self, cr, width, height, pad, scale, pal):
+        """The month, the strip of the week and tomorrow's ghost.
+
+        The Nook page the card shows when nothing is playing: the month
+        in the red of the macOS calendar, the seven days of the week with
+        today lit, and a quiet ghost for the emptiness of the day.
+        """
         import datetime
 
         m = self.metrics
-        scale = m.scale
         today = datetime.date.today()
-        cy = y + h / 2
+        x, y = pad, 40 * scale
+        w = 132 * scale
+        h = height - 52 * scale
 
-        # the weekday in the red of the macOS calendar, the day bold
-        draw.draw_text(cr, x, cy - 34 * scale, today.strftime("%a").upper(),
-                       11 * scale, (0.98, 0.23, 0.19, 1.0), weight="bold",
+        # the month, in the red of the macOS Calendar
+        draw.draw_text(cr, x, y + 7 * scale, today.strftime("%B").upper(),
+                       9.5 * scale, (0.97, 0.30, 0.28, 1.0), weight="bold",
                        baseline="middle")
-        draw.draw_text(cr, x, cy, str(today.day), 40 * scale, pal["text"],
-                       weight="bold", baseline="middle")
-        draw.draw_text(cr, x, cy + 32 * scale, today.strftime("%B %Y"),
-                       11 * scale, pal["text_faint"], baseline="middle")
+
+        # the strip of the week: seven chips, today lit
+        monday = today - datetime.timedelta(days=today.weekday())
+        cell = 16.4 * scale
+        gap = 1.5 * scale
+        for index in range(7):
+            day = monday + datetime.timedelta(days=index)
+            chip_x = x + index * (cell + gap)
+            if day == today:
+                draw.fill_squircle(cr, chip_x, y + 17 * scale, cell,
+                                   15 * scale, 5 * scale,
+                                   (0.97, 0.30, 0.28, 1.0), m.squareness)
+            draw.draw_text(cr, chip_x + cell / 2, y + 24.5 * scale,
+                           str(day.day), 9 * scale,
+                           (1.0, 1.0, 1.0, 1.0) if day == today
+                           else (*pal["text_faint"][:3], 0.85),
+                           align="center", baseline="middle")
+
+        # the ghost of the day: quiet ink, with a cursor that points on
+        ghost_y = y + h - 14 * scale
+        draw.draw_text(cr, x, ghost_y, "Nothing for today", 10 * scale,
+                       (*pal["text_faint"][:3], 0.85), baseline="middle")
+        draw.draw_text(cr, x + w - 16 * scale, ghost_y, "→",
+                       12.5 * scale, (*pal["text_faint"][:3], 0.55),
+                       baseline="middle")
 
     def _paint_button(self, cr, x, y, size, shape, pal):
         color = pal["text_dim"]
@@ -1168,6 +1463,14 @@ class Notch(Panel):
 
     def on_motion(self, x, y):
         self.shell.keep_alive("notch")
+        # a pointer that comes back cancels the fold-up, and a pointer
+        # that rests on the pill opens the dashboard after a breath
+        if self._collapse_source is not None:
+            GLib.source_remove(self._collapse_source)
+            self._collapse_source = None
+        if not self._expanded and self._expand_source is None:
+            self._expand_source = GLib.timeout_add(140,
+                                                   self._expand_for_hover)
         moved = self._shelf_pointer != (x, y)
         self._shelf_pointer = (x, y)
         # the remove chip of the shelf card follows the pointer, so the
@@ -1175,6 +1478,13 @@ class Notch(Panel):
         if moved and self._shelf_shown and self._shelf:
             self.redraw()
         return False
+
+    def on_leave(self):
+        """The pointer walked off the island: the dashboard folds back."""
+        self._cancel_expand()
+        if self._expanded and self._collapse_source is None:
+            self._collapse_source = GLib.timeout_add(240,
+                                                     self._collapse_if_left)
 
     def _open_shelf_item(self, action):
         # the shelf button carries its rank and its path
@@ -1191,12 +1501,14 @@ class Notch(Panel):
     def on_click(self, x, y, button):
         for action, bx, by, size in self._buttons:
             if bx <= x <= bx + size and by <= y <= by + size:
-                if action == "page:calendar":
-                    self._shelf_shown = False
-                    self.redraw()
-                elif action == "page:shelf":
-                    self._shelf_shown = True
-                    self.redraw()
+                if not self._expanded:
+                    # a button on the pill only opens the island
+                    self._expand_now()
+                    return True
+                if action == "tab:nook" or action == "page:calendar":
+                    self._go_page("nook")
+                elif action == "tab:tray" or action == "page:shelf":
+                    self._go_page("tray")
                 elif action.startswith("shelf:del:"):
                     self._remove_shelf(int(action.rsplit(":", 1)[1]))
                 elif action.startswith("shelf:open:"):
@@ -1209,6 +1521,10 @@ class Notch(Panel):
                 else:
                     self._activate(action)
                 return True
+        if not self._expanded:
+            # the pill answers a tap by opening the island
+            self._expand_now()
+            return True
         return False
 
     def _activate(self, action):
